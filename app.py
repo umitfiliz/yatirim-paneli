@@ -27,6 +27,7 @@ from data_utils import (
     usd_try_kuru_getir,
 )
 from macro_utils import tum_politika_faizlerini_getir
+from regime_utils import rejim_ozeti_olustur
 
 st.set_page_config(
     page_title="Yatırım Karar Destek Paneli",
@@ -57,16 +58,19 @@ with sekme1:
     st.write("Risk iştahı ve sermaye akış yönünü özetleyen göstergeler.")
 
     kolonlar = st.columns(3)
+    makro_degerler = {}  # rejim özeti hesaplamasında tekrar kullanmak için sakla
     for i, (ticker, isim) in enumerate(MAKRO_GOSTERGELER.items()):
-        veri = fiyat_gecmisi_getir_cached(ticker, gun_sayisi=30)
+        veri = fiyat_gecmisi_getir_cached(ticker, gun_sayisi=60)
         with kolonlar[i % 3]:
             if not veri.empty:
                 guncel = float(veri["Close"].dropna().iloc[-1])
-                degisim = getiri_hesapla(veri, 7)  # haftalık değişim
+                degisim_7g = getiri_hesapla(veri, 7)
+                degisim_30g = getiri_hesapla(veri, 30)
+                makro_degerler[isim] = {"guncel": guncel, "degisim_7g": degisim_7g, "degisim_30g": degisim_30g}
                 st.metric(
                     label=isim,
                     value=f"{guncel:,.2f}",
-                    delta=f"{degisim}% (7 gün)" if degisim is not None else None,
+                    delta=f"{degisim_7g}% (7 gün)" if degisim_7g is not None else None,
                     help=MAKRO_GOSTERGE_BILGI.get(isim),
                 )
             else:
@@ -129,11 +133,69 @@ with sekme1:
             st.markdown(FAIZ_GOSTERGE_BILGI[isim])
             st.markdown("---")
 
+    # ============================================================
+    # REJİM ÖZETİ: Yukarıdaki ham verileri yorumlayıp tek bir bağlama dönüştür
+    # ============================================================
+    st.divider()
+    st.subheader("🧭 Rejim Özeti")
+    st.caption(
+        "Yukarıdaki ham göstergelerin basit kural tabanlı bir yorumu. "
+        "Kesin öngörü değildir, tarihsel genellemelere dayanır — Katman 2'ye bağlam olarak aktarılır."
+    )
+
+    vix_bilgi = makro_degerler.get("VIX (Risk İştahı)", {})
+    usdtry_bilgi = makro_degerler.get("USD/TRY", {})
+    usdcny_bilgi = makro_degerler.get("USD/CNY", {})
+
+    rejim = rejim_ozeti_olustur(
+        vix_guncel=vix_bilgi.get("guncel"),
+        vix_degisim_7g=vix_bilgi.get("degisim_7g"),
+        usdtry_degisim_30g=usdtry_bilgi.get("degisim_30g"),
+        usdcny_degisim_30g=usdcny_bilgi.get("degisim_30g"),
+        tcmb_faiz=otomatik_faizler.get("TCMB Faiz Oranı (%)") or POLITIKA_FAIZLERI_MANUEL.get("TCMB Faiz Oranı (%)"),
+        fed_faiz=otomatik_faizler.get("Fed Faiz Oranı (%)") or POLITIKA_FAIZLERI_MANUEL.get("Fed Faiz Oranı (%)"),
+        fred_api_key=fred_key,
+    )
+
+    # Katman 2'nin okuyabilmesi için session_state'e kaydet
+    st.session_state["rejim_ozeti"] = rejim
+
+    st.markdown(f"### Genel Rejim: **{rejim['genel_rejim']}**")
+
+    ozet_kolonlar = st.columns(2)
+    with ozet_kolonlar[0]:
+        st.markdown(f"**Risk İştahı:** {rejim['risk_istahi']['etiket']}")
+        st.caption(rejim['risk_istahi']['aciklama'])
+        st.markdown(f"**Fed Faiz Yönü:** {rejim['fed_faiz_yonu']['etiket']}")
+        st.caption(rejim['fed_faiz_yonu']['aciklama'])
+    with ozet_kolonlar[1]:
+        st.markdown(f"**TL/EM Sermaye Akışı:** {rejim['sermaye_akisi']['etiket']}")
+        st.caption(rejim['sermaye_akisi']['aciklama'])
+        if rejim['carry_cazibesi']['etiket']:
+            st.markdown(f"**TL Carry Cazibesi:** {rejim['carry_cazibesi']['etiket']}")
+            st.caption(rejim['carry_cazibesi']['aciklama'])
+
 # ============================================================
 # KATMAN 2: VARLIK SINIFI KIYASI
 # ============================================================
 with sekme2:
     st.subheader("Varlık Sınıfları Arası Getiri Kıyası (USD Bazlı)")
+
+    rejim = st.session_state.get("rejim_ozeti")
+    if rejim:
+        st.info(
+            f"**Katman 1'den gelen bağlam — Genel Rejim: {rejim['genel_rejim']}**\n\n"
+            f"Risk İştahı: {rejim['risk_istahi']['etiket']} · "
+            f"Fed Faiz Yönü: {rejim['fed_faiz_yonu']['etiket']} · "
+            f"TL/EM Sermaye Akışı: {rejim['sermaye_akisi']['etiket']}\n\n"
+            "Bu bağlamı, aşağıdaki varlık sınıfı getirilerini yorumlarken göz önünde "
+            "bulundurabilirsin (örn. 'Temkinli/Savunmacı' rejimde tarihsel olarak "
+            "güvenli liman varlıklar öne çıkma eğilimindedir — kesin değildir)."
+        )
+    else:
+        st.caption(
+            "Rejim özetini görmek için önce Katman 1 sekmesini bir kez ziyaret et."
+        )
 
     varlik_sonuclari = hisse_listesi_analiz_et_cached(DIGER_VARLIKLAR, VADE_GUN)
     st.dataframe(

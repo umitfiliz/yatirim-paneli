@@ -38,6 +38,7 @@ MAKRO_GOSTERGELER = {
     "JPY=X": "USD/JPY",
     "CNY=X": "USD/CNY",
     "BZ=F": "Brent Petrol",
+    "EEM": "MSCI EM Proxy (Gelişen Piyasalar)",
 }
 
 # Not: Fed/ECB/PBOC/BOJ/TCMB politika faizleri yfinance'te yok.
@@ -96,6 +97,16 @@ MAKRO_GOSTERGE_BILGI = {
         "Küresel referans ham petrol fiyatı (varil başına USD).\n\n"
         "**Yorumlama:** Yükseliş, Türkiye gibi enerji ithalatçısı ülkelerde cari açığı "
         "büyütme ve TL üzerinde baskı yaratma eğilimindedir."
+    ),
+    "MSCI EM Proxy (Gelişen Piyasalar)": (
+        "Gelişen piyasa hisselerinin genel performansını izlemek için kullanılan "
+        "iShares MSCI Emerging Markets ETF (EEM) fiyatı. Not: Resmi MSCI EM Endeksi "
+        "ücretsiz API'lerde doğrudan bulunmuyor, bu ETF endeksi çok yakından takip "
+        "ettiği için pratik bir vekil (proxy) gösterge olarak kullanılıyor.\n\n"
+        "**Yorumlama:** Yükseliş = gelişen piyasalara (Türkiye dahil) küresel yatırımcı "
+        "iştahı artıyor. Düşüş = gelişen piyasalardan risk azaltma/çıkış eğilimi. "
+        "BIST'in küresel EM akımlarıyla ne kadar uyumlu hareket ettiğini karşılaştırmak "
+        "için faydalıdır."
     ),
 }
 
