@@ -162,6 +162,28 @@ with sekme1:
 
     st.markdown(f"### Genel Rejim: **{rejim['genel_rejim']}**")
 
+    # Bileşen dökümü: hangi göstergenin hangi yöne çektiğini şeffaf şekilde göster
+    dokum_satirlari = []
+    for kalem in rejim["dokum"]:
+        skor = kalem["skor"]
+        if skor is None:
+            yon_ikonu = "❔"
+        elif skor > 0:
+            yon_ikonu = "🟢 Destekleyici"
+        elif skor < 0:
+            yon_ikonu = "🔴 Temkinli"
+        else:
+            yon_ikonu = "⚪ Nötr"
+        dokum_satirlari.append({"Bileşen": kalem["bilesen"], "Durum": kalem["etiket"], "Yön": yon_ikonu})
+
+    st.dataframe(pd.DataFrame(dokum_satirlari), use_container_width=True, hide_index=True)
+    st.caption(
+        "Genel rejim, yukarıdaki bileşenlerin ortalamasından türetilir. Bileşenler "
+        "birbirine zıt yöne işaret ediyorsa (örn. biri destekleyici, diğeri temkinli), "
+        "bu genellikle piyasanın henüz net bir yön bulamadığı veya birden fazla "
+        "faktörün çekişme halinde olduğu bir dönemi işaret eder."
+    )
+
     ozet_kolonlar = st.columns(2)
     with ozet_kolonlar[0]:
         st.markdown(f"**Risk İştahı:** {rejim['risk_istahi']['etiket']}")

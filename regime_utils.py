@@ -89,15 +89,49 @@ def carry_cazibesi_degerlendir(tcmb_faiz: float | None, fed_faiz: float | None) 
     return etiket, f"TCMB-Fed faiz farkı yaklaşık {fark:.1f} puan ({etiket.lower()} carry cazibesi)."
 
 
-def genel_rejim_belirle(risk_etiket: str, sermaye_etiket: str) -> str:
-    """Risk iştahı ve sermaye akışı etiketlerini birleştirip tek bir genel rejim adı üretir."""
-    if risk_etiket.startswith("Risk-Off") and sermaye_etiket == "Sermaye Çıkışı Sinyali":
-        return "Temkinli / Savunmacı"
-    if risk_etiket.startswith("Risk-On") and sermaye_etiket == "Sermaye Girişi Sinyali":
-        return "Destekleyici / Risk Alımına Uygun"
-    if risk_etiket == "Nötr" and sermaye_etiket == "Nötr":
-        return "Kararsız / Yatay"
-    return "Karışık Sinyaller"
+def genel_rejim_belirle(risk_etiket: str, sermaye_etiket: str, fed_yon_etiket: str) -> tuple[str, list[dict]]:
+    """
+    Risk iştahı, sermaye akışı ve Fed faiz yönü etiketlerini bir puanlama
+    sistemiyle birleştirir. Basit "ikili kural" yerine her bileşene -1/0/+1
+    puan vererek ortalamasını alır — bu, sonucun daha kademeli (siyah-beyaz
+    olmayan) ve şeffaf olmasını sağlar. Ayrıca hangi bileşenin hangi yöne
+    çektiğini gösteren bir döküm (breakdown) döner.
+    """
+    haritalar = {
+        "risk": {"Risk-On (İştahlı)": 1, "Nötr": 0, "Risk-Off (Kaçış)": -1},
+        "sermaye": {"Sermaye Girişi Sinyali": 1, "Nötr": 0, "Sermaye Çıkışı Sinyali": -1},
+        "fed": {"Gevşiyor": 1, "Sabit": 0, "Sıkılaşıyor": -1},
+    }
+
+    dokum = [
+        {"bilesen": "Risk İştahı (VIX)", "etiket": risk_etiket, "skor": haritalar["risk"].get(risk_etiket)},
+        {"bilesen": "TL/EM Sermaye Akışı", "etiket": sermaye_etiket, "skor": haritalar["sermaye"].get(sermaye_etiket)},
+        {"bilesen": "Fed Faiz Yönü", "etiket": fed_yon_etiket, "skor": haritalar["fed"].get(fed_yon_etiket)},
+    ]
+
+    gecerli_skorlar = [d["skor"] for d in dokum if d["skor"] is not None]
+    if not gecerli_skorlar:
+        return "Bilinmiyor (yeterli veri yok)", dokum
+
+    ortalama = sum(gecerli_skorlar) / len(gecerli_skorlar)
+
+    if ortalama >= 0.6:
+        etiket = "Destekleyici"
+    elif ortalama >= 0.2:
+        etiket = "Ilımlı Destekleyici"
+    elif ortalama > -0.2:
+        etiket = "Nötr / Yatay"
+    elif ortalama > -0.6:
+        etiket = "Ilımlı Temkinli"
+    else:
+        etiket = "Temkinli / Savunmacı"
+
+    # Netlik kontrolü: bileşenler birbirine tamamen zıt yöndeyse bunu belirt
+    # (örn. risk iştahı olumluyken sermaye TL'den çıkıyor gibi çelişkili bir durum)
+    if len(gecerli_skorlar) >= 2 and (max(gecerli_skorlar) - min(gecerli_skorlar) >= 2):
+        etiket += " — bileşenler arasında çelişki var, aşağıdaki döküme bak"
+
+    return etiket, dokum
 
 
 def rejim_ozeti_olustur(
@@ -118,10 +152,11 @@ def rejim_ozeti_olustur(
     sermaye_etiket, sermaye_aciklama = sermaye_akisi_yonu_degerlendir(usdtry_degisim_30g, usdcny_degisim_30g)
     carry_etiket, carry_aciklama = carry_cazibesi_degerlendir(tcmb_faiz, fed_faiz)
 
-    genel_rejim = genel_rejim_belirle(risk_etiket, sermaye_etiket)
+    genel_rejim, dokum = genel_rejim_belirle(risk_etiket, sermaye_etiket, fed_yon_etiket)
 
     return {
         "genel_rejim": genel_rejim,
+        "dokum": dokum,
         "risk_istahi": {"etiket": risk_etiket, "aciklama": risk_aciklama},
         "fed_faiz_yonu": {"etiket": fed_yon_etiket, "aciklama": fed_yon_aciklama},
         "sermaye_akisi": {"etiket": sermaye_etiket, "aciklama": sermaye_aciklama},
