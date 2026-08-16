@@ -234,6 +234,7 @@ def us_baglam_olustur(
         "degerleme": {"etiket": abd_deger_etiket, "aciklama": abd_deger_aciklama},
         "tahvil": {"etiket": tahvil_etiket, "aciklama": tahvil_aciklama},
     }
+def genel_rejim_belirle(risk_etiket: str, sermaye_etiket: str, fed_yon_etiket: str) -> tuple[str, list[dict]]:
     """
     Risk iştahı, sermaye akışı ve Fed faiz yönü etiketlerini bir puanlama
     sistemiyle birleştirir. Basit "ikili kural" yerine her bileşene -1/0/+1
