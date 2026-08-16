@@ -90,6 +90,7 @@ def ortalama_getiri(sonuc_df: pd.DataFrame, kolon: str) -> float | None:
     if degerler.empty:
         return None
     return round(float(degerler.mean()), 2)
+def hisse_listesi_analiz_et(hisse_sozlugu: dict, vade_gunleri: dict) -> pd.DataFrame:
     """
     Bir hisse sözlüğü ({ticker: isim}) alır, her hisse için 3 ve 6 aylık
     getirileri hesaplayıp tek bir tablo (DataFrame) olarak döner.
