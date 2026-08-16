@@ -7,6 +7,7 @@ Katman 1: Makro Rejim | Katman 2: Varlık Sınıfı Kıyası | Katman 3: Hisse S
 
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 
 from config import (
     BIST_HISSELER,
@@ -18,6 +19,8 @@ from config import (
     MAKRO_GOSTERGE_BILGI,
     FAIZ_GOSTERGE_BILGI,
     MANUEL_GEREKCE,
+    KAYNAK_LINKLERI,
+    DEFAULT_ESIKLER,
 )
 from data_utils import (
     fiyat_gecmisi_getir,
@@ -44,6 +47,64 @@ usd_try_kuru_getir_cached = st.cache_data(ttl=3600)(usd_try_kuru_getir)
 
 st.title("📊 Yatırım Karar Destek Paneli")
 st.caption("BIST & ABD hisseleri | Getiriler USD bazlı | Bu bir karar destek aracıdır, yatırım tavsiyesi değildir.")
+st.caption(
+    f"🕒 Sayfa son yüklenme zamanı: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} "
+    "— ham veriler en fazla 1 saat önbellekte tutulur, bu yüzden gösterilen değerler "
+    "bu zaman damgasından biraz daha eski olabilir."
+)
+
+# ============================================================
+# KENAR ÇUBUĞU: Rejim yorumlama katmanının eşik değerlerini ayarla
+# ============================================================
+with st.sidebar:
+    st.header("⚙️ Karar Mekanizması Ayarları")
+    st.caption(
+        "Aşağıdaki eşik değerleri, Katman 1'deki 'Rejim Özeti' ve 'Ülkeye Özgü "
+        "Faktörler' bölümlerinin nasıl yorumlandığını belirler. Varsayılan "
+        "değerler makul bir başlangıç noktasıdır, kendi görüşüne göre ayarlayabilirsin."
+    )
+
+    with st.expander("Risk İştahı (VIX)"):
+        vix_risk_on = st.slider("Risk-On eşiği (altı)", 10.0, 30.0, DEFAULT_ESIKLER["vix_risk_on"], 0.5, key="esik_vix_risk_on")
+        vix_risk_off = st.slider("Risk-Off eşiği (üstü)", 20.0, 50.0, DEFAULT_ESIKLER["vix_risk_off"], 0.5, key="esik_vix_risk_off")
+
+    with st.expander("Sermaye Akışı & DXY"):
+        sermaye_esik = st.slider("Sermaye akışı %değişim eşiği", 0.5, 10.0, DEFAULT_ESIKLER["sermaye_esik"], 0.5, key="esik_sermaye")
+        dxy_esik = st.slider("DXY %değişim eşiği", 0.5, 10.0, DEFAULT_ESIKLER["dxy_esik"], 0.5, key="esik_dxy")
+
+    with st.expander("Carry Cazibesi (TCMB-Fed Farkı)"):
+        carry_yuksek = st.slider("Yüksek eşiği (puan)", 0.0, 30.0, DEFAULT_ESIKLER["carry_yuksek"], 1.0, key="esik_carry_yuksek")
+        carry_cok_yuksek = st.slider("Çok Yüksek eşiği (puan)", 5.0, 50.0, DEFAULT_ESIKLER["carry_cok_yuksek"], 1.0, key="esik_carry_cok_yuksek")
+
+    with st.expander("Değerleme (F/K Oranı)"):
+        bist_fk_ucuz = st.slider("BIST 'Ucuz' eşiği (F/K altı)", 3.0, 20.0, DEFAULT_ESIKLER["bist_fk_ucuz"], 0.5, key="esik_bist_fk_ucuz")
+        bist_fk_pahali = st.slider("BIST 'Pahalı' eşiği (F/K üstü)", 8.0, 30.0, DEFAULT_ESIKLER["bist_fk_pahali"], 0.5, key="esik_bist_fk_pahali")
+        abd_fk_ucuz = st.slider("ABD 'Ucuz' eşiği (F/K altı)", 10.0, 35.0, DEFAULT_ESIKLER["abd_fk_ucuz"], 0.5, key="esik_abd_fk_ucuz")
+        abd_fk_pahali = st.slider("ABD 'Pahalı' eşiği (F/K üstü)", 20.0, 50.0, DEFAULT_ESIKLER["abd_fk_pahali"], 0.5, key="esik_abd_fk_pahali")
+
+    with st.expander("Fed Faiz Yönü & ABD Tahvili"):
+        fed_yon_esik = st.slider("Fed faiz yönü eşiği (puan)", 0.05, 1.0, DEFAULT_ESIKLER["fed_yon_esik"], 0.05, key="esik_fed_yon")
+        tahvil_esik = st.slider("ABD 10Y tahvil %değişim eşiği", 1.0, 10.0, DEFAULT_ESIKLER["tahvil_esik"], 0.5, key="esik_tahvil")
+
+    if st.button("↺ Varsayılanlara Sıfırla"):
+        for k in list(DEFAULT_ESIKLER.keys()):
+            st.session_state.pop(f"esik_{k}", None)
+        st.rerun()
+
+    esikler = {
+        "vix_risk_on": vix_risk_on,
+        "vix_risk_off": vix_risk_off,
+        "sermaye_esik": sermaye_esik,
+        "carry_yuksek": carry_yuksek,
+        "carry_cok_yuksek": carry_cok_yuksek,
+        "bist_fk_ucuz": bist_fk_ucuz,
+        "bist_fk_pahali": bist_fk_pahali,
+        "abd_fk_ucuz": abd_fk_ucuz,
+        "abd_fk_pahali": abd_fk_pahali,
+        "dxy_esik": dxy_esik,
+        "tahvil_esik": tahvil_esik,
+        "fed_yon_esik": fed_yon_esik,
+    }
 
 sekme1, sekme2, sekme3 = st.tabs([
     "🌍 Katman 1: Makro Rejim",
@@ -134,6 +195,11 @@ with sekme1:
             st.markdown(FAIZ_GOSTERGE_BILGI[isim])
             st.markdown("---")
 
+    with st.expander("🔗 Bu değerleri kendim nereden doğrulayabilirim?"):
+        st.caption("Aşağıdaki resmi kaynaklardan güncel değerleri kendi gözünle kontrol edebilirsin.")
+        for isim, url in KAYNAK_LINKLERI.items():
+            st.markdown(f"- **{isim}:** [{url}]({url})")
+
     # ============================================================
     # REJİM ÖZETİ: Yukarıdaki ham verileri yorumlayıp tek bir bağlama dönüştür
     # ============================================================
@@ -156,6 +222,7 @@ with sekme1:
         tcmb_faiz=otomatik_faizler.get("TCMB Faiz Oranı (%)") or POLITIKA_FAIZLERI_MANUEL.get("TCMB Faiz Oranı (%)"),
         fed_faiz=otomatik_faizler.get("Fed Faiz Oranı (%)") or POLITIKA_FAIZLERI_MANUEL.get("Fed Faiz Oranı (%)"),
         fred_api_key=fred_key,
+        esikler=esikler,
     )
 
     # Katman 2'nin okuyabilmesi için session_state'e kaydet
@@ -197,6 +264,39 @@ with sekme1:
         if rejim['carry_cazibesi']['etiket']:
             st.markdown(f"**TL Carry Cazibesi:** {rejim['carry_cazibesi']['etiket']}")
             st.caption(rejim['carry_cazibesi']['aciklama'])
+
+    with st.expander("🔍 Karar Mekanizması Nasıl Çalışıyor? (güncel ayarlarınla)"):
+        st.markdown(f"""
+Her bileşen, aşağıdaki **şu anki eşik değerlerine** göre -1 (temkinli), 0 (nötr) veya
++1 (destekleyici) puan alır. Bu puanların ortalaması genel etiketi belirler. Eşikleri
+kenar çubuğundaki (sol taraf) "⚙️ Karar Mekanizması Ayarları" bölümünden değiştirebilirsin.
+
+**Risk İştahı (VIX):**
+- VIX < {esikler['vix_risk_on']:.1f} → Risk-On → **+1**
+- {esikler['vix_risk_on']:.1f} ≤ VIX < {esikler['vix_risk_off']:.1f} → Nötr → **0**
+- VIX ≥ {esikler['vix_risk_off']:.1f} → Risk-Off → **-1**
+
+**TL/EM Sermaye Akışı (USD/TRY ve USD/CNY ortalama 30 günlük %değişim):**
+- Ortalama < -{esikler['sermaye_esik']:.1f}% → Sermaye Girişi → **+1**
+- -{esikler['sermaye_esik']:.1f}% ile +{esikler['sermaye_esik']:.1f}% arası → Nötr → **0**
+- Ortalama > +{esikler['sermaye_esik']:.1f}% → Sermaye Çıkışı → **-1**
+
+**Fed Faiz Yönü (son ~90 gündeki puan değişimi):**
+- Değişim < -{esikler['fed_yon_esik']:.2f} puan → Gevşiyor → **+1**
+- -{esikler['fed_yon_esik']:.2f} ile +{esikler['fed_yon_esik']:.2f} puan arası → Sabit → **0**
+- Değişim > +{esikler['fed_yon_esik']:.2f} puan → Sıkılaşıyor → **-1**
+
+**Genel Rejim Skalası (ortalama puan → etiket):**
+- ≥ 0.6 → Destekleyici
+- 0.2 ile 0.6 arası → Ilımlı Destekleyici
+- -0.2 ile 0.2 arası → Nötr / Yatay
+- -0.6 ile -0.2 arası → Ilımlı Temkinli
+- ≤ -0.6 → Temkinli / Savunmacı
+
+Bileşenler arasındaki fark 2 puana ulaşırsa (örn. biri +1, diğeri -1), etikete
+"bileşenler arasında çelişki var" notu eklenir — bu, tek bir yön göstergesine
+güvenmemen gerektiğinin bir işaretidir.
+        """)
 
     # ============================================================
     # ÜLKEYE ÖZGÜ FAKTÖRLER: Küresel resmin yakalayamadığı yerel dinamikler
@@ -241,6 +341,7 @@ with sekme1:
             bist_ortalama_fk=bist_ort_fk,
             dxy_degisim_30g=dxy_bilgi.get("degisim_30g"),
             carry_etiket=rejim["carry_cazibesi"]["etiket"],
+            esikler=esikler,
         )
         st.markdown(f"**BIST Bağlamı: {tr_baglam['genel_baglam']}**")
 
@@ -265,6 +366,7 @@ with sekme1:
             fed_yon_etiket=rejim["fed_faiz_yonu"]["etiket"],
             abd_ortalama_fk=abd_ort_fk,
             tnx_degisim_30g=tahvil_bilgi.get("degisim_30g"),
+            esikler=esikler,
         )
         st.markdown(f"**ABD Bağlamı: {us_baglam['genel_baglam']}**")
 
@@ -272,6 +374,25 @@ with sekme1:
         "Not: F/K değerleme eşikleri basit sezgisel aralıklardır (kesin tarihsel "
         "ortalamaya dayanmaz), yorumlarken bunu göz önünde bulundur."
     )
+
+    with st.expander("🔍 BIST/ABD Bağlamları Nasıl Hesaplanıyor? (güncel ayarlarınla)"):
+        st.markdown(f"""
+**BIST Bağlamı bileşenleri:**
+- TL Reel Faizi: ≥5 → Güçlü Pozitif (+1) · 0-5 → Hafif Pozitif (0) · <0 → Negatif (-1)
+- BIST Ort. F/K: <{esikler['bist_fk_ucuz']:.1f} → Ucuz/Makul (+1) · {esikler['bist_fk_ucuz']:.1f}-{esikler['bist_fk_pahali']:.1f} → Makul (0) · >{esikler['bist_fk_pahali']:.1f} → Pahalı (-1)
+- DXY Etkisi: değişim > +{esikler['dxy_esik']:.1f}% → Baskı (-1) · aralıkta → Nötr (0) · < -{esikler['dxy_esik']:.1f}% → Destek (+1)
+- Carry Cazibesi: Yüksek/Çok Yüksek → +1 · Orta/Düşük → 0
+
+**ABD Bağlamı bileşenleri:**
+- Fed Faiz Yönü: Gevşiyor (+1) · Sabit (0) · Sıkılaşıyor (-1)
+- ABD Ort. F/K: <{esikler['abd_fk_ucuz']:.1f} → Ucuz/Makul (+1) · {esikler['abd_fk_ucuz']:.1f}-{esikler['abd_fk_pahali']:.1f} → Makul (0) · >{esikler['abd_fk_pahali']:.1f} → Pahalı (-1)
+- 10Y Tahvil Trendi: değişim > +{esikler['tahvil_esik']:.1f}% → Değerleme Baskısı (-1) · aralıkta → Stabil (0) · < -{esikler['tahvil_esik']:.1f}% → Değerleme Desteği (+1)
+
+Bileşenlerin ortalaması aynı Genel Rejim skalasıyla (yukarıda) etikete dönüştürülür.
+Eşikleri kenar çubuğundan değiştirebilirsin.
+
+TÜFE verisini kendi gözünle doğrulamak istersen: [{KAYNAK_LINKLERI['TÜFE Yıllık Enflasyon (%)']}]({KAYNAK_LINKLERI['TÜFE Yıllık Enflasyon (%)']})
+        """)
 
     # Katman 2'nin kullanabilmesi için ikisini de session_state'e kaydet
     st.session_state["tr_baglam"] = tr_baglam

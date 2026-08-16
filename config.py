@@ -162,3 +162,31 @@ MANUEL_GEREKCE = {
     "Fed Faiz Oranı (%)": "FRED API key'i secrets.toml içinde tanımlı değil.",
     "ECB Faiz Oranı (%)": "FRED API key'i secrets.toml içinde tanımlı değil.",
 }
+
+# Manuel/otomatik gelen verileri kendi gözünle doğrulayabileceğin resmi kaynak linkleri
+KAYNAK_LINKLERI = {
+    "Fed Faiz Oranı (%)": "https://www.federalreserve.gov/monetarypolicy/openmarket.htm",
+    "ECB Faiz Oranı (%)": "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/key_ecb_interest_rates/html/index.en.html",
+    "TCMB Faiz Oranı (%)": "https://www.tcmb.gov.tr/wps/wcm/connect/tr/tcmb+tr/main+menu/temel+faaliyetler/para+politikasi/politika+faizi",
+    "PBOC Faiz Oranı (%)": "https://www.pbc.gov.cn/en/3688006/3688438/3688442/index.html",
+    "BOJ Faiz Oranı (%)": "https://www.boj.or.jp/en/mopo/mpmdeci/index.htm",
+    "TÜFE Yıllık Enflasyon (%)": "https://www.tuik.gov.tr/Kategori/GetKategori?p=Enflasyon-ve-Fiyat-106",
+}
+
+# --- Rejim yorumlama katmanının varsayılan eşik değerleri ---
+# Bu değerler app.py'de kenar çubuğundan (sidebar) değiştirilebilir.
+# Burada tanımlı olanlar, kullanıcı hiç dokunmazsa kullanılacak başlangıç değerleridir.
+DEFAULT_ESIKLER = {
+    "vix_risk_on": 20.0,       # VIX bu değerin altındaysa Risk-On
+    "vix_risk_off": 30.0,      # VIX bu değerin üstündeyse Risk-Off
+    "sermaye_esik": 2.0,       # USD/TRY-CNY ortalama %değişim eşiği (giriş/çıkış sinyali)
+    "carry_yuksek": 10.0,      # TCMB-Fed farkı bu puanın üstündeyse "Yüksek" carry
+    "carry_cok_yuksek": 20.0,  # TCMB-Fed farkı bu puanın üstündeyse "Çok Yüksek" carry
+    "bist_fk_ucuz": 8.0,       # BIST ort. F/K bu değerin altındaysa "Ucuz/Makul"
+    "bist_fk_pahali": 14.0,    # BIST ort. F/K bu değerin üstündeyse "Pahalı"
+    "abd_fk_ucuz": 20.0,       # ABD ort. F/K bu değerin altındaysa "Ucuz/Makul"
+    "abd_fk_pahali": 30.0,     # ABD ort. F/K bu değerin üstündeyse "Pahalı"
+    "dxy_esik": 2.0,           # DXY %değişim eşiği (TL/EM baskı/destek sinyali)
+    "tahvil_esik": 3.0,        # ABD 10Y tahvil %değişim eşiği (değerleme baskısı sinyali)
+    "fed_yon_esik": 0.1,       # Fed faizi bu puandan fazla değiştiyse yön sinyali verilir
+}

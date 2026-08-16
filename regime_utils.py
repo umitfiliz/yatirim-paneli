@@ -11,14 +11,17 @@ from data_utils import fiyat_gecmisi_getir, getiri_hesapla
 from macro_utils import fred_veri_getir
 
 
-def risk_istahi_degerlendir(vix_guncel: float | None, vix_degisim_7g: float | None) -> tuple[str, str]:
+def risk_istahi_degerlendir(
+    vix_guncel: float | None, vix_degisim_7g: float | None,
+    risk_on_esik: float = 20.0, risk_off_esik: float = 30.0,
+) -> tuple[str, str]:
     """VIX seviyesine ve haftalık değişimine göre risk iştahını sınıflandırır."""
     if vix_guncel is None:
         return "Bilinmiyor", "VIX verisi alınamadı."
 
-    if vix_guncel < 20:
+    if vix_guncel < risk_on_esik:
         etiket = "Risk-On (İştahlı)"
-    elif vix_guncel < 30:
+    elif vix_guncel < risk_off_esik:
         etiket = "Nötr"
     else:
         etiket = "Risk-Off (Kaçış)"
@@ -33,7 +36,7 @@ def risk_istahi_degerlendir(vix_guncel: float | None, vix_degisim_7g: float | No
     return etiket, f"VIX {vix_guncel:.1f} seviyesinde.{yon_notu}"
 
 
-def fed_faiz_yonu_degerlendir(fred_api_key: str) -> tuple[str, str]:
+def fed_faiz_yonu_degerlendir(fred_api_key: str, esik: float = 0.1) -> tuple[str, str]:
     """Fed faizinin son ~90 gündeki değişimine bakarak sıkılaşma/gevşeme yönünü belirler."""
     if not fred_api_key:
         return "Bilinmiyor", "FRED API key'i tanımlı değil."
@@ -43,16 +46,16 @@ def fed_faiz_yonu_degerlendir(fred_api_key: str) -> tuple[str, str]:
         return "Bilinmiyor", "Yeterli veri alınamadı."
 
     fark = float(seri.iloc[-1] - seri.iloc[0])
-    if fark > 0.1:
+    if fark > esik:
         return "Sıkılaşıyor", f"Son ~90 günde Fed faizi {fark:+.2f} puan değişti."
-    elif fark < -0.1:
+    elif fark < -esik:
         return "Gevşiyor", f"Son ~90 günde Fed faizi {fark:+.2f} puan değişti."
     else:
         return "Sabit", "Son ~90 günde Fed faizinde belirgin bir yön değişikliği yok."
 
 
 def sermaye_akisi_yonu_degerlendir(
-    usdtry_degisim_30g: float | None, usdcny_degisim_30g: float | None
+    usdtry_degisim_30g: float | None, usdcny_degisim_30g: float | None, esik: float = 2.0
 ) -> tuple[str, str]:
     """
     USD/TRY ve USD/CNY'nin son 30 günlük değişimine bakarak gelişen piyasalara
@@ -65,23 +68,26 @@ def sermaye_akisi_yonu_degerlendir(
         return "Bilinmiyor", "Kur verisi alınamadı."
 
     ortalama = sum(degerler) / len(degerler)
-    if ortalama > 2:
+    if ortalama > esik:
         return "Sermaye Çıkışı Sinyali", f"USD, TL/CNY karşısında ortalama %{ortalama:.1f} güçlendi (son 30 gün)."
-    elif ortalama < -2:
+    elif ortalama < -esik:
         return "Sermaye Girişi Sinyali", f"USD, TL/CNY karşısında ortalama %{ortalama:.1f} zayıfladı (son 30 gün)."
     else:
         return "Nötr", f"USD/TL ve USD/CNY son 30 günde belirgin bir yön göstermiyor (ortalama %{ortalama:.1f})."
 
 
-def carry_cazibesi_degerlendir(tcmb_faiz: float | None, fed_faiz: float | None) -> tuple[str | None, str]:
+def carry_cazibesi_degerlendir(
+    tcmb_faiz: float | None, fed_faiz: float | None,
+    yuksek_esik: float = 10.0, cok_yuksek_esik: float = 20.0,
+) -> tuple[str | None, str]:
     """TCMB ve Fed faiz farkına bakarak TL varlıkların 'carry' (faiz farkı) cazibesini değerlendirir."""
     if tcmb_faiz is None or fed_faiz is None:
         return None, "Faiz verisi eksik olduğu için hesaplanamadı."
 
     fark = tcmb_faiz - fed_faiz
-    if fark > 20:
+    if fark > cok_yuksek_esik:
         etiket = "Çok Yüksek"
-    elif fark > 10:
+    elif fark > yuksek_esik:
         etiket = "Yüksek"
     else:
         etiket = "Orta/Düşük"
@@ -119,26 +125,26 @@ def degerleme_degerlendir(ortalama_fk: float | None, ucuz_esik: float, pahali_es
     return etiket, f"İzlenen {piyasa_adi} hisselerinin ortalama F/K'sı ~{ortalama_fk:.1f}."
 
 
-def dxy_etkisi_degerlendir(dxy_degisim_30g: float | None) -> tuple[str, str]:
+def dxy_etkisi_degerlendir(dxy_degisim_30g: float | None, esik: float = 2.0) -> tuple[str, str]:
     """Dolar Endeksi'nin (DXY) son 30 günlük değişiminin TL/EM üzerindeki baskısını değerlendirir."""
     if dxy_degisim_30g is None:
         return "Bilinmiyor", "DXY verisi alınamadı."
-    if dxy_degisim_30g > 2:
+    if dxy_degisim_30g > esik:
         etiket = "TL/EM İçin Baskı"
-    elif dxy_degisim_30g < -2:
+    elif dxy_degisim_30g < -esik:
         etiket = "TL/EM İçin Destek"
     else:
         etiket = "Nötr"
     return etiket, f"DXY son 30 günde %{dxy_degisim_30g:.1f} değişti."
 
 
-def abd_tahvil_yonu_degerlendir(tnx_degisim_30g: float | None) -> tuple[str, str]:
+def abd_tahvil_yonu_degerlendir(tnx_degisim_30g: float | None, esik: float = 3.0) -> tuple[str, str]:
     """ABD 10 yıllık tahvil faizinin trendinin hisse değerlemeleri üzerindeki baskısını değerlendirir."""
     if tnx_degisim_30g is None:
         return "Bilinmiyor", "Tahvil faizi verisi alınamadı."
-    if tnx_degisim_30g > 3:
+    if tnx_degisim_30g > esik:
         etiket = "Yükseliyor (Değerleme Baskısı)"
-    elif tnx_degisim_30g < -3:
+    elif tnx_degisim_30g < -esik:
         etiket = "Düşüyor (Değerleme Desteği)"
     else:
         etiket = "Stabil"
@@ -174,11 +180,18 @@ def tr_baglam_olustur(
     bist_ortalama_fk: float | None,
     dxy_degisim_30g: float | None,
     carry_etiket: str | None,
+    esikler: dict | None = None,
 ) -> dict:
     """Türkiye'ye özgü faktörleri birleştirip BIST için ayrı bir bağlam özeti üretir."""
+    e = esikler or {}
     reel_faiz_etiket, reel_faiz_aciklama = tr_reel_faiz_degerlendir(reel_faiz)
-    bist_deger_etiket, bist_deger_aciklama = degerleme_degerlendir(bist_ortalama_fk, ucuz_esik=8, pahali_esik=14, piyasa_adi="BIST")
-    dxy_etiket, dxy_aciklama = dxy_etkisi_degerlendir(dxy_degisim_30g)
+    bist_deger_etiket, bist_deger_aciklama = degerleme_degerlendir(
+        bist_ortalama_fk,
+        ucuz_esik=e.get("bist_fk_ucuz", 8.0),
+        pahali_esik=e.get("bist_fk_pahali", 14.0),
+        piyasa_adi="BIST",
+    )
+    dxy_etiket, dxy_aciklama = dxy_etkisi_degerlendir(dxy_degisim_30g, esik=e.get("dxy_esik", 2.0))
 
     haritalar = {
         "reel_faiz": {"Güçlü Pozitif": 1, "Hafif Pozitif": 0, "Negatif": -1},
@@ -209,10 +222,17 @@ def us_baglam_olustur(
     fed_yon_etiket: str,
     abd_ortalama_fk: float | None,
     tnx_degisim_30g: float | None,
+    esikler: dict | None = None,
 ) -> dict:
     """ABD'ye özgü faktörleri birleştirip ABD hisseleri için ayrı bir bağlam özeti üretir."""
-    abd_deger_etiket, abd_deger_aciklama = degerleme_degerlendir(abd_ortalama_fk, ucuz_esik=20, pahali_esik=30, piyasa_adi="ABD")
-    tahvil_etiket, tahvil_aciklama = abd_tahvil_yonu_degerlendir(tnx_degisim_30g)
+    e = esikler or {}
+    abd_deger_etiket, abd_deger_aciklama = degerleme_degerlendir(
+        abd_ortalama_fk,
+        ucuz_esik=e.get("abd_fk_ucuz", 20.0),
+        pahali_esik=e.get("abd_fk_pahali", 30.0),
+        piyasa_adi="ABD",
+    )
+    tahvil_etiket, tahvil_aciklama = abd_tahvil_yonu_degerlendir(tnx_degisim_30g, esik=e.get("tahvil_esik", 3.0))
 
     haritalar = {
         "fed": {"Gevşiyor": 1, "Sabit": 0, "Sıkılaşıyor": -1},
@@ -287,15 +307,25 @@ def rejim_ozeti_olustur(
     tcmb_faiz: float | None,
     fed_faiz: float | None,
     fred_api_key: str,
+    esikler: dict | None = None,
 ) -> dict:
     """
     Tüm alt değerlendirmeleri birleştirip Katman 2'nin kullanabileceği
     tek bir rejim özeti sözlüğü üretir.
     """
-    risk_etiket, risk_aciklama = risk_istahi_degerlendir(vix_guncel, vix_degisim_7g)
-    fed_yon_etiket, fed_yon_aciklama = fed_faiz_yonu_degerlendir(fred_api_key)
-    sermaye_etiket, sermaye_aciklama = sermaye_akisi_yonu_degerlendir(usdtry_degisim_30g, usdcny_degisim_30g)
-    carry_etiket, carry_aciklama = carry_cazibesi_degerlendir(tcmb_faiz, fed_faiz)
+    e = esikler or {}
+    risk_etiket, risk_aciklama = risk_istahi_degerlendir(
+        vix_guncel, vix_degisim_7g,
+        risk_on_esik=e.get("vix_risk_on", 20.0), risk_off_esik=e.get("vix_risk_off", 30.0),
+    )
+    fed_yon_etiket, fed_yon_aciklama = fed_faiz_yonu_degerlendir(fred_api_key, esik=e.get("fed_yon_esik", 0.1))
+    sermaye_etiket, sermaye_aciklama = sermaye_akisi_yonu_degerlendir(
+        usdtry_degisim_30g, usdcny_degisim_30g, esik=e.get("sermaye_esik", 2.0)
+    )
+    carry_etiket, carry_aciklama = carry_cazibesi_degerlendir(
+        tcmb_faiz, fed_faiz,
+        yuksek_esik=e.get("carry_yuksek", 10.0), cok_yuksek_esik=e.get("carry_cok_yuksek", 20.0),
+    )
 
     genel_rejim, dokum = genel_rejim_belirle(risk_etiket, sermaye_etiket, fed_yon_etiket)
 
