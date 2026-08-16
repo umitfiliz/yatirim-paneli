@@ -26,8 +26,9 @@ from data_utils import (
     bist_listesi_usd_analiz_et,
     usd_try_kuru_getir,
 )
-from macro_utils import tum_politika_faizlerini_getir
-from regime_utils import rejim_ozeti_olustur
+from macro_utils import tum_politika_faizlerini_getir, tcmb_tufe_yillik_getir
+from country_utils import ortalama_fk_getir, dxy_getir, abd_tahvil_getir, tr_reel_faiz_hesapla
+from regime_utils import rejim_ozeti_olustur, tr_baglam_olustur, us_baglam_olustur
 
 st.set_page_config(
     page_title="Yatırım Karar Destek Paneli",
@@ -197,6 +198,85 @@ with sekme1:
             st.markdown(f"**TL Carry Cazibesi:** {rejim['carry_cazibesi']['etiket']}")
             st.caption(rejim['carry_cazibesi']['aciklama'])
 
+    # ============================================================
+    # ÜLKEYE ÖZGÜ FAKTÖRLER: Küresel resmin yakalayamadığı yerel dinamikler
+    # ============================================================
+    st.divider()
+    st.subheader("🗺️ Ülkeye Özgü Faktörler")
+    st.caption(
+        "Küresel risk iştahı olumlu olsa bile, bir piyasanın kendi değerleme seviyesi "
+        "veya reel faiz ortamı farklı bir tablo çizebilir. Bu bölüm iki piyasayı "
+        "(BIST ve ABD) ayrı ayrı değerlendirir."
+    )
+
+    evds_key_tufe = st.secrets.get("EVDS_API_KEY", "")
+
+    ulke_kolonlar = st.columns(2)
+
+    # --- Türkiye'ye özgü faktörler ---
+    with ulke_kolonlar[0]:
+        st.markdown("#### 🇹🇷 Türkiye")
+
+        tufe_yillik_cached = st.cache_data(ttl=3600)(tcmb_tufe_yillik_getir)
+        tufe_yillik = tufe_yillik_cached(evds_key_tufe) if evds_key_tufe else None
+
+        tcmb_faiz_deger = otomatik_faizler.get("TCMB Faiz Oranı (%)") or POLITIKA_FAIZLERI_MANUEL.get("TCMB Faiz Oranı (%)")
+        reel_faiz = tr_reel_faiz_hesapla(tcmb_faiz_deger, tufe_yillik)
+
+        ortalama_fk_getir_cached = st.cache_data(ttl=3600)(ortalama_fk_getir)
+        bist_ort_fk = ortalama_fk_getir_cached(BIST_HISSELER)
+
+        dxy_getir_cached = st.cache_data(ttl=3600)(dxy_getir)
+        dxy_bilgi = dxy_getir_cached()
+
+        tr_tablo = pd.DataFrame([
+            {"Gösterge": "TÜFE Yıllık Enflasyon (%)", "Değer": f"{tufe_yillik:.1f}" if tufe_yillik is not None else "Veri yok (EVDS key gerekli)"},
+            {"Gösterge": "Yaklaşık Reel Faiz (%)", "Değer": f"{reel_faiz:.1f}" if reel_faiz is not None else "Hesaplanamadı"},
+            {"Gösterge": "BIST Ort. F/K (izlenen hisseler)", "Değer": f"{bist_ort_fk:.1f}" if bist_ort_fk is not None else "Veri yok"},
+        ])
+        st.dataframe(tr_tablo, use_container_width=True, hide_index=True)
+
+        tr_baglam = tr_baglam_olustur(
+            reel_faiz=reel_faiz,
+            bist_ortalama_fk=bist_ort_fk,
+            dxy_degisim_30g=dxy_bilgi.get("degisim_30g"),
+            carry_etiket=rejim["carry_cazibesi"]["etiket"],
+        )
+        st.markdown(f"**BIST Bağlamı: {tr_baglam['genel_baglam']}**")
+
+    # --- ABD'ye özgü faktörler ---
+    with ulke_kolonlar[1]:
+        st.markdown("#### 🇺🇸 ABD")
+
+        abd_ort_fk_cached = st.cache_data(ttl=3600)(ortalama_fk_getir)
+        abd_ort_fk = abd_ort_fk_cached(ABD_HISSELER)
+
+        abd_tahvil_getir_cached = st.cache_data(ttl=3600)(abd_tahvil_getir)
+        tahvil_bilgi = abd_tahvil_getir_cached()
+
+        us_tablo = pd.DataFrame([
+            {"Gösterge": "ABD Ort. F/K (izlenen hisseler)", "Değer": f"{abd_ort_fk:.1f}" if abd_ort_fk is not None else "Veri yok"},
+            {"Gösterge": "10 Yıllık Tahvil Faizi (%)", "Değer": f"{tahvil_bilgi.get('guncel'):.2f}" if tahvil_bilgi.get("guncel") is not None else "Veri yok"},
+            {"Gösterge": "Dolar Endeksi (DXY)", "Değer": f"{dxy_bilgi.get('guncel'):.2f}" if dxy_bilgi.get("guncel") is not None else "Veri yok"},
+        ])
+        st.dataframe(us_tablo, use_container_width=True, hide_index=True)
+
+        us_baglam = us_baglam_olustur(
+            fed_yon_etiket=rejim["fed_faiz_yonu"]["etiket"],
+            abd_ortalama_fk=abd_ort_fk,
+            tnx_degisim_30g=tahvil_bilgi.get("degisim_30g"),
+        )
+        st.markdown(f"**ABD Bağlamı: {us_baglam['genel_baglam']}**")
+
+    st.caption(
+        "Not: F/K değerleme eşikleri basit sezgisel aralıklardır (kesin tarihsel "
+        "ortalamaya dayanmaz), yorumlarken bunu göz önünde bulundur."
+    )
+
+    # Katman 2'nin kullanabilmesi için ikisini de session_state'e kaydet
+    st.session_state["tr_baglam"] = tr_baglam
+    st.session_state["us_baglam"] = us_baglam
+
 # ============================================================
 # KATMAN 2: VARLIK SINIFI KIYASI
 # ============================================================
@@ -204,19 +284,25 @@ with sekme2:
     st.subheader("Varlık Sınıfları Arası Getiri Kıyası (USD Bazlı)")
 
     rejim = st.session_state.get("rejim_ozeti")
-    if rejim:
+    tr_baglam = st.session_state.get("tr_baglam")
+    us_baglam = st.session_state.get("us_baglam")
+
+    if rejim and tr_baglam and us_baglam:
         st.info(
-            f"**Katman 1'den gelen bağlam — Genel Rejim: {rejim['genel_rejim']}**\n\n"
-            f"Risk İştahı: {rejim['risk_istahi']['etiket']} · "
-            f"Fed Faiz Yönü: {rejim['fed_faiz_yonu']['etiket']} · "
-            f"TL/EM Sermaye Akışı: {rejim['sermaye_akisi']['etiket']}\n\n"
-            "Bu bağlamı, aşağıdaki varlık sınıfı getirilerini yorumlarken göz önünde "
-            "bulundurabilirsin (örn. 'Temkinli/Savunmacı' rejimde tarihsel olarak "
-            "güvenli liman varlıklar öne çıkma eğilimindedir — kesin değildir)."
+            f"**Küresel Genel Rejim: {rejim['genel_rejim']}**\n\n"
+            f"🇹🇷 **BIST Bağlamı: {tr_baglam['genel_baglam']}** — "
+            f"Reel Faiz: {tr_baglam['reel_faiz']['etiket']} · "
+            f"Değerleme: {tr_baglam['degerleme']['etiket']}\n\n"
+            f"🇺🇸 **ABD Bağlamı: {us_baglam['genel_baglam']}** — "
+            f"Değerleme: {us_baglam['degerleme']['etiket']} · "
+            f"Tahvil Trendi: {us_baglam['tahvil']['etiket']}\n\n"
+            "Bu bağlamları, aşağıdaki varlık sınıfı getirilerini yorumlarken göz önünde "
+            "bulundurabilirsin — küresel resim olumlu olsa bile bir piyasanın kendi "
+            "değerleme/reel faiz koşulları farklı bir tablo çizebilir."
         )
     else:
         st.caption(
-            "Rejim özetini görmek için önce Katman 1 sekmesini bir kez ziyaret et."
+            "Rejim ve ülke bağlamlarını görmek için önce Katman 1 sekmesini bir kez ziyaret et."
         )
 
     varlik_sonuclari = hisse_listesi_analiz_et_cached(DIGER_VARLIKLAR, VADE_GUN)

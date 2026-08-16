@@ -36,20 +36,20 @@ BIST ve ABD hisseleri için 3 katmanlı karar destek sistemi.
 6. Deploy et. Birkaç dakika içinde uygulaman `https://[senin-secimin].streamlit.app` adresinde
    yayında olacak — telefon, tablet, bilgisayar fark etmeksizin bu linkten erişebilirsin.
 
-## Şu Anki Durum (v3)
+## Şu Anki Durum (v4)
 
 - ✅ Katman 1: Piyasa göstergeleri (VIX, USD/TRY, EUR/USD, USD/JPY, USD/CNY, Brent, MSCI EM proxy) — yfinance üzerinden otomatik
 - ✅ Katman 1: Politika faizleri (Fed, ECB, TCMB) — FRED ve borsapy üzerinden otomatik
-- ✅ Katman 1: **Rejim Özeti** — ham verileri yorumlayan kural tabanlı bir sentez (risk iştahı, Fed faiz yönü, TL/EM sermaye akışı, carry cazibesi), Katman 2'ye bağlam olarak aktarılıyor
+- ✅ Katman 1: **Rejim Özeti** — küresel ham verileri yorumlayan puanlama tabanlı bir sentez, bileşen dökümüyle şeffaf
+- ✅ Katman 1: **Ülkeye Özgü Faktörler** — BIST ve ABD için ayrı ayrı: TÜFE/reel faiz, ortalama F/K değerlemesi, DXY, ABD tahvil trendi. İki ayrı bağlam ("BIST Bağlamı" / "ABD Bağlamı") üretiliyor
 - ⚠️ Katman 1: PBOC ve BOJ faizleri FRED'de aylık ve gecikmeli güncellenen OECD serilerinden geliyor — gerçek zamanlı değil
-- ✅ Katman 2: Altın, USD/TRY, ABD 10 yıllık tahvil faizi karşılaştırması + Katman 1 rejim bağlamı
+- ✅ Katman 2: Altın, USD/TRY, ABD 10 yıllık tahvil faizi karşılaştırması + Katman 1'den gelen küresel + ülkeye özgü bağlam
 - ✅ Katman 3: BIST getirileri hem USD hem TL bazlı gösteriliyor
 - ✅ Katman 3: ABD hisseleri zaten USD bazlı
 - ✅ GitHub + Streamlit Cloud üzerinden yayında, çok cihazdan erişilebilir
 
 ## Sıradaki Adımlar
 
-- Temel analiz metrikleri (F/K, PD/DD) ekleme
 - Risk-ayarlı getiri (volatilite, Sharpe oranı) hesaplama
-- Enflasyon verisiyle reel faiz hesaplama (TÜFE fonksiyonu `macro_utils.py`'de tanımlı, kullanılmayı bekliyor)
 - EMBI spread gibi ek bir EM risk göstergesi (şu an sadece MSCI EM proxy var)
+- Katman 3'te F/K, PD/DD gibi metrikleri tek tek hisse bazında (şu an sadece ortalama olarak Katman 1'de kullanılıyor) gösterme

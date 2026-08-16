@@ -89,7 +89,151 @@ def carry_cazibesi_degerlendir(tcmb_faiz: float | None, fed_faiz: float | None) 
     return etiket, f"TCMB-Fed faiz farkı yaklaşık {fark:.1f} puan ({etiket.lower()} carry cazibesi)."
 
 
-def genel_rejim_belirle(risk_etiket: str, sermaye_etiket: str, fed_yon_etiket: str) -> tuple[str, list[dict]]:
+def tr_reel_faiz_degerlendir(reel_faiz: float | None) -> tuple[str, str]:
+    """TCMB reel faizinin (politika faizi - enflasyon) seviyesini değerlendirir."""
+    if reel_faiz is None:
+        return "Bilinmiyor", "Veri eksik (TÜFE için EVDS API key'i gerekli)."
+    if reel_faiz >= 5:
+        etiket = "Güçlü Pozitif"
+    elif reel_faiz >= 0:
+        etiket = "Hafif Pozitif"
+    else:
+        etiket = "Negatif"
+    return etiket, f"Yaklaşık reel faiz: %{reel_faiz:.1f} (TCMB faizi - yıllık TÜFE enflasyonu)."
+
+
+def degerleme_degerlendir(ortalama_fk: float | None, ucuz_esik: float, pahali_esik: float, piyasa_adi: str) -> tuple[str, str]:
+    """
+    Ortalama F/K oranına göre bir hisse grubunun değerleme seviyesini
+    kabaca sınıflandırır. Eşikler basit bir sezgiseldir, kesin bir
+    tarihsel ortalamaya dayanmaz — yorumlarken bunu göz önünde bulundur.
+    """
+    if ortalama_fk is None:
+        return "Bilinmiyor", "F/K verisi alınamadı."
+    if ortalama_fk < ucuz_esik:
+        etiket = "Ucuz/Makul"
+    elif ortalama_fk <= pahali_esik:
+        etiket = "Makul"
+    else:
+        etiket = "Pahalı"
+    return etiket, f"İzlenen {piyasa_adi} hisselerinin ortalama F/K'sı ~{ortalama_fk:.1f}."
+
+
+def dxy_etkisi_degerlendir(dxy_degisim_30g: float | None) -> tuple[str, str]:
+    """Dolar Endeksi'nin (DXY) son 30 günlük değişiminin TL/EM üzerindeki baskısını değerlendirir."""
+    if dxy_degisim_30g is None:
+        return "Bilinmiyor", "DXY verisi alınamadı."
+    if dxy_degisim_30g > 2:
+        etiket = "TL/EM İçin Baskı"
+    elif dxy_degisim_30g < -2:
+        etiket = "TL/EM İçin Destek"
+    else:
+        etiket = "Nötr"
+    return etiket, f"DXY son 30 günde %{dxy_degisim_30g:.1f} değişti."
+
+
+def abd_tahvil_yonu_degerlendir(tnx_degisim_30g: float | None) -> tuple[str, str]:
+    """ABD 10 yıllık tahvil faizinin trendinin hisse değerlemeleri üzerindeki baskısını değerlendirir."""
+    if tnx_degisim_30g is None:
+        return "Bilinmiyor", "Tahvil faizi verisi alınamadı."
+    if tnx_degisim_30g > 3:
+        etiket = "Yükseliyor (Değerleme Baskısı)"
+    elif tnx_degisim_30g < -3:
+        etiket = "Düşüyor (Değerleme Desteği)"
+    else:
+        etiket = "Stabil"
+    return etiket, f"ABD 10 yıllık tahvil faizi son 30 günde %{tnx_degisim_30g:.1f} değişti."
+
+
+def _ortalama_skor_ve_etiket(dokum: list[dict]) -> tuple[str, float | None]:
+    """Bir bileşen dökümünden ortalama skoru ve buna karşılık gelen etiketi üretir."""
+    gecerli_skorlar = [d["skor"] for d in dokum if d["skor"] is not None]
+    if not gecerli_skorlar:
+        return "Bilinmiyor (yeterli veri yok)", None
+
+    ortalama = sum(gecerli_skorlar) / len(gecerli_skorlar)
+    if ortalama >= 0.6:
+        etiket = "Destekleyici"
+    elif ortalama >= 0.2:
+        etiket = "Ilımlı Destekleyici"
+    elif ortalama > -0.2:
+        etiket = "Nötr / Yatay"
+    elif ortalama > -0.6:
+        etiket = "Ilımlı Temkinli"
+    else:
+        etiket = "Temkinli / Savunmacı"
+
+    if len(gecerli_skorlar) >= 2 and (max(gecerli_skorlar) - min(gecerli_skorlar) >= 2):
+        etiket += " — bileşenler arasında çelişki var"
+
+    return etiket, ortalama
+
+
+def tr_baglam_olustur(
+    reel_faiz: float | None,
+    bist_ortalama_fk: float | None,
+    dxy_degisim_30g: float | None,
+    carry_etiket: str | None,
+) -> dict:
+    """Türkiye'ye özgü faktörleri birleştirip BIST için ayrı bir bağlam özeti üretir."""
+    reel_faiz_etiket, reel_faiz_aciklama = tr_reel_faiz_degerlendir(reel_faiz)
+    bist_deger_etiket, bist_deger_aciklama = degerleme_degerlendir(bist_ortalama_fk, ucuz_esik=8, pahali_esik=14, piyasa_adi="BIST")
+    dxy_etiket, dxy_aciklama = dxy_etkisi_degerlendir(dxy_degisim_30g)
+
+    haritalar = {
+        "reel_faiz": {"Güçlü Pozitif": 1, "Hafif Pozitif": 0, "Negatif": -1},
+        "degerleme": {"Ucuz/Makul": 1, "Makul": 0, "Pahalı": -1},
+        "dxy": {"TL/EM İçin Destek": 1, "Nötr": 0, "TL/EM İçin Baskı": -1},
+        "carry": {"Çok Yüksek": 1, "Yüksek": 1, "Orta/Düşük": 0},
+    }
+
+    dokum = [
+        {"bilesen": "TL Reel Faizi", "etiket": reel_faiz_etiket, "skor": haritalar["reel_faiz"].get(reel_faiz_etiket)},
+        {"bilesen": "BIST Değerlemesi (Ort. F/K)", "etiket": bist_deger_etiket, "skor": haritalar["degerleme"].get(bist_deger_etiket)},
+        {"bilesen": "Dolar Endeksi (DXY) Etkisi", "etiket": dxy_etiket, "skor": haritalar["dxy"].get(dxy_etiket)},
+        {"bilesen": "TL Carry Cazibesi", "etiket": carry_etiket or "Bilinmiyor", "skor": haritalar["carry"].get(carry_etiket)},
+    ]
+
+    genel_baglam, _ = _ortalama_skor_ve_etiket(dokum)
+
+    return {
+        "genel_baglam": genel_baglam,
+        "dokum": dokum,
+        "reel_faiz": {"etiket": reel_faiz_etiket, "aciklama": reel_faiz_aciklama},
+        "degerleme": {"etiket": bist_deger_etiket, "aciklama": bist_deger_aciklama},
+        "dxy": {"etiket": dxy_etiket, "aciklama": dxy_aciklama},
+    }
+
+
+def us_baglam_olustur(
+    fed_yon_etiket: str,
+    abd_ortalama_fk: float | None,
+    tnx_degisim_30g: float | None,
+) -> dict:
+    """ABD'ye özgü faktörleri birleştirip ABD hisseleri için ayrı bir bağlam özeti üretir."""
+    abd_deger_etiket, abd_deger_aciklama = degerleme_degerlendir(abd_ortalama_fk, ucuz_esik=20, pahali_esik=30, piyasa_adi="ABD")
+    tahvil_etiket, tahvil_aciklama = abd_tahvil_yonu_degerlendir(tnx_degisim_30g)
+
+    haritalar = {
+        "fed": {"Gevşiyor": 1, "Sabit": 0, "Sıkılaşıyor": -1},
+        "degerleme": {"Ucuz/Makul": 1, "Makul": 0, "Pahalı": -1},
+        "tahvil": {"Düşüyor (Değerleme Desteği)": 1, "Stabil": 0, "Yükseliyor (Değerleme Baskısı)": -1},
+    }
+
+    dokum = [
+        {"bilesen": "Fed Faiz Yönü", "etiket": fed_yon_etiket, "skor": haritalar["fed"].get(fed_yon_etiket)},
+        {"bilesen": "ABD Hisseleri Değerlemesi (Ort. F/K)", "etiket": abd_deger_etiket, "skor": haritalar["degerleme"].get(abd_deger_etiket)},
+        {"bilesen": "10 Yıllık Tahvil Faizi Trendi", "etiket": tahvil_etiket, "skor": haritalar["tahvil"].get(tahvil_etiket)},
+    ]
+
+    genel_baglam, _ = _ortalama_skor_ve_etiket(dokum)
+
+    return {
+        "genel_baglam": genel_baglam,
+        "dokum": dokum,
+        "degerleme": {"etiket": abd_deger_etiket, "aciklama": abd_deger_aciklama},
+        "tahvil": {"etiket": tahvil_etiket, "aciklama": tahvil_aciklama},
+    }
     """
     Risk iştahı, sermaye akışı ve Fed faiz yönü etiketlerini bir puanlama
     sistemiyle birleştirir. Basit "ikili kural" yerine her bileşene -1/0/+1
