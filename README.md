@@ -36,23 +36,17 @@ BIST ve ABD hisseleri için 3 katmanlı karar destek sistemi.
 6. Deploy et. Birkaç dakika içinde uygulaman `https://[senin-secimin].streamlit.app` adresinde
    yayında olacak — telefon, tablet, bilgisayar fark etmeksizin bu linkten erişebilirsin.
 
-## Şu Anki Durum (v5)
+## Şu Anki Durum (v6)
 
-- ✅ Katman 1: Piyasa göstergeleri (VIX, USD/TRY, EUR/USD, USD/JPY, USD/CNY, Brent, MSCI EM proxy) — yfinance üzerinden otomatik
-- ✅ Katman 1: Politika faizleri (Fed, ECB, TCMB) — FRED ve borsapy üzerinden otomatik, resmi kaynak linkleriyle doğrulanabilir
-- ✅ Katman 1: **Rejim Özeti** — küresel ham verileri yorumlayan puanlama tabanlı bir sentez, bileşen dökümüyle şeffaf
-- ✅ Katman 1: **Ülkeye Özgü Faktörler** — BIST ve ABD için ayrı ayrı bağlam (reel faiz, değerleme, DXY, tahvil trendi)
-- ✅ **Ayarlanabilir karar mekanizması** — kenar çubuğundan (sidebar) tüm eşik değerleri (VIX seviyeleri, F/K aralıkları, carry eşikleri vb.) kişiselleştirilebilir, "Karar Mekanizması Nasıl Çalışıyor?" bölümü güncel ayarlara göre dinamik açıklama gösteriyor
-- ✅ Sayfa üstünde son yüklenme zaman damgası (önbellek süresi notuyla birlikte)
-- ⚠️ Katman 1: PBOC ve BOJ faizleri FRED'de aylık ve gecikmeli güncellenen OECD serilerinden geliyor — gerçek zamanlı değil
-- ✅ Katman 2: Altın, USD/TRY, ABD 10 yıllık tahvil faizi karşılaştırması + Katman 1'den gelen küresel + ülkeye özgü bağlam
-- ✅ Katman 3: BIST getirileri hem USD hem TL bazlı gösteriliyor
-- ✅ Katman 3: ABD hisseleri zaten USD bazlı
+- ✅ Katman 1: Piyasa göstergeleri, politika faizleri, Rejim Özeti, Ülkeye Özgü Faktörler, ayarlanabilir eşikler
+- ✅ Katman 2: **Varlık Sınıfı Karşılaştırması** — BIST hisseleri (ort.), ABD hisseleri (ort.), Altın, TL Mevduatı (yaklaşık), USD/TRY referansı tek tabloda ve gruplu çubuk grafikte karşılaştırılıyor; en yüksek/en düşük getiri otomatik vurgulanıyor
+- ✅ Katman 2: TL Mevduatı, TCMB politika faizinden basit faiz yaklaşımıyla türetilip USD/TRY değişimiyle USD bazına çevriliyor (bileşik faiz değil, yaklaşık bir hesaplama — açıkça belirtiliyor)
+- ✅ Katman 3: BIST/ABD hisse bazlı getiriler (USD/TL)
 - ✅ GitHub + Streamlit Cloud üzerinden yayında, çok cihazdan erişilebilir
 
 ## Sıradaki Adımlar
 
 - Risk-ayarlı getiri (volatilite, Sharpe oranı) hesaplama
-- EMBI spread gibi ek bir EM risk göstergesi (şu an sadece MSCI EM proxy var)
-- Katman 3'te F/K, PD/DD gibi metrikleri tek tek hisse bazında (şu an sadece ortalama olarak Katman 1'de kullanılıyor) gösterme
-- Kenar çubuğundaki eşik ayarlarını bir profil olarak kaydedip yeniden yükleyebilme (şu an her oturumda sıfırlanıyor)
+- EMBI spread gibi ek bir EM risk göstergesi
+- Katman 3'te F/K, PD/DD gibi metrikleri tek tek hisse bazında gösterme
+- Kenar çubuğundaki eşik ayarlarını bir profil olarak kaydedip yeniden yükleyebilme

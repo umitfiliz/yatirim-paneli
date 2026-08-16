@@ -7,6 +7,7 @@ Katman 1: Makro Rejim | Katman 2: Varlık Sınıfı Kıyası | Katman 3: Hisse S
 
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from datetime import datetime
 
 from config import (
@@ -28,6 +29,7 @@ from data_utils import (
     hisse_listesi_analiz_et,
     bist_listesi_usd_analiz_et,
     usd_try_kuru_getir,
+    ortalama_getiri,
 )
 from macro_utils import tum_politika_faizlerini_getir, tcmb_tufe_yillik_getir
 from country_utils import ortalama_fk_getir, dxy_getir, abd_tahvil_getir, tr_reel_faiz_hesapla
@@ -146,6 +148,9 @@ with sekme1:
     # bu yüzden en azından TCMB satırı FRED key'i olmasa bile otomatik gelebilir.
     tum_politika_faizlerini_getir_cached = st.cache_data(ttl=3600)(tum_politika_faizlerini_getir)
     otomatik_faizler = tum_politika_faizlerini_getir_cached(fred_key)
+
+    # Katman 2'nin TL mevduat yaklaşık getirisi hesaplayabilmesi için sakla
+    st.session_state["tcmb_faiz_guncel"] = otomatik_faizler.get("TCMB Faiz Oranı (%)") or POLITIKA_FAIZLERI_MANUEL.get("TCMB Faiz Oranı (%)")
 
     faiz_satirlari = []
     for isim, deger in otomatik_faizler.items():
@@ -426,7 +431,115 @@ with sekme2:
             "Rejim ve ülke bağlamlarını görmek için önce Katman 1 sekmesini bir kez ziyaret et."
         )
 
+    # ============================================================
+    # ANA KARŞILAŞTIRMA: Hangi yatırım aracı daha avantajlı?
+    # ============================================================
     varlik_sonuclari = hisse_listesi_analiz_et_cached(DIGER_VARLIKLAR, VADE_GUN)
+
+    st.subheader("🏁 Varlık Sınıfı Karşılaştırması (USD Bazlı, Yaklaşık Getiri)")
+    st.caption(
+        "BIST hisseleri, ABD hisseleri, altın, TL mevduatı ve USD/TRY referansının "
+        "aynı zaman dilimindeki (3 ve 6 ay) USD bazlı getirileri. Farklı risk "
+        "profillerine sahip araçları aynı çizgide gösterir — geçmiş getiri gelecek "
+        "performansın garantisi değildir."
+    )
+
+    # BIST ortalaması (USD bazlı)
+    bist_karsilastirma = bist_listesi_usd_analiz_et_cached(BIST_HISSELER, VADE_GUN)
+    bist_3ay = ortalama_getiri(bist_karsilastirma, "Getiri (3 Ay, USD)")
+    bist_6ay = ortalama_getiri(bist_karsilastirma, "Getiri (6 Ay, USD)")
+
+    # ABD ortalaması
+    abd_karsilastirma = hisse_listesi_analiz_et_cached(ABD_HISSELER, VADE_GUN)
+    abd_3ay = ortalama_getiri(abd_karsilastirma, "Getiri (3 Ay)")
+    abd_6ay = ortalama_getiri(abd_karsilastirma, "Getiri (6 Ay)")
+
+    # Altın (zaten varlik_sonuclari'nda var, DIGER_VARLIKLAR'dan)
+    altin_satiri = varlik_sonuclari[varlik_sonuclari["Ticker"] == "GC=F"]
+    altin_3ay = float(altin_satiri["Getiri (3 Ay)"].iloc[0]) if not altin_satiri.empty and pd.notna(altin_satiri["Getiri (3 Ay)"].iloc[0]) else None
+    altin_6ay = float(altin_satiri["Getiri (6 Ay)"].iloc[0]) if not altin_satiri.empty and pd.notna(altin_satiri["Getiri (6 Ay)"].iloc[0]) else None
+
+    # TL mevduatı — basit faiz yaklaşımıyla yıllık TCMB faizinden 3/6 aylık nominal
+    # TL getirisi türetilip, aynı dönemdeki USD/TRY değişimi düşülerek USD bazına çevrilir.
+    # Bu BİLEŞİK FAİZ DEĞİL, basit bir yaklaşımdır — gerçek mevduat ürünlerinde vade, stopaj
+    # ve bankaya göre farklılık gösterebilir.
+    tcmb_faiz_guncel = st.session_state.get("tcmb_faiz_guncel")
+    usdtry_veri_200g = fiyat_gecmisi_getir_cached("TRY=X", gun_sayisi=200)
+    usdtry_3ay_degisim = getiri_hesapla(usdtry_veri_200g, 90)
+    usdtry_6ay_degisim = getiri_hesapla(usdtry_veri_200g, 180)
+
+    if tcmb_faiz_guncel is not None:
+        tl_mevduat_3ay_tl = round(tcmb_faiz_guncel * 90 / 365, 2)
+        tl_mevduat_6ay_tl = round(tcmb_faiz_guncel * 180 / 365, 2)
+        tl_mevduat_3ay_usd = round(tl_mevduat_3ay_tl - usdtry_3ay_degisim, 2) if usdtry_3ay_degisim is not None else None
+        tl_mevduat_6ay_usd = round(tl_mevduat_6ay_tl - usdtry_6ay_degisim, 2) if usdtry_6ay_degisim is not None else None
+    else:
+        tl_mevduat_3ay_usd = None
+        tl_mevduat_6ay_usd = None
+
+    # USD/TRY referansı (sadece dolar tutmanın TL'ye göre getirisi)
+    usdtry_referans_3ay = usdtry_3ay_degisim
+    usdtry_referans_6ay = usdtry_6ay_degisim
+
+    karsilastirma_df = pd.DataFrame([
+        {"Varlık": "BIST Hisseleri (Ort.)", "Getiri (3 Ay)": bist_3ay, "Getiri (6 Ay)": bist_6ay},
+        {"Varlık": "ABD Hisseleri (Ort.)", "Getiri (3 Ay)": abd_3ay, "Getiri (6 Ay)": abd_6ay},
+        {"Varlık": "Altın", "Getiri (3 Ay)": altin_3ay, "Getiri (6 Ay)": altin_6ay},
+        {"Varlık": "TL Mevduatı (yaklaşık)", "Getiri (3 Ay)": tl_mevduat_3ay_usd, "Getiri (6 Ay)": tl_mevduat_6ay_usd},
+        {"Varlık": "USD/TRY (referans)", "Getiri (3 Ay)": usdtry_referans_3ay, "Getiri (6 Ay)": usdtry_referans_6ay},
+    ])
+
+    # Sıralama: 3 aylık getiriye göre büyükten küçüğe
+    karsilastirma_siralanmis = karsilastirma_df.dropna(subset=["Getiri (3 Ay)"]).sort_values(
+        "Getiri (3 Ay)", ascending=False
+    ).reset_index(drop=True)
+
+    if not karsilastirma_siralanmis.empty:
+        lider = karsilastirma_siralanmis.iloc[0]
+        sonuncu = karsilastirma_siralanmis.iloc[-1]
+        st.markdown(
+            f"**🥇 Son 3 ayda en yüksek USD bazlı getiri: {lider['Varlık']} "
+            f"(%{lider['Getiri (3 Ay)']:.1f})** · "
+            f"En düşük: {sonuncu['Varlık']} (%{sonuncu['Getiri (3 Ay)']:.1f})"
+        )
+
+    st.dataframe(
+        karsilastirma_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Getiri (3 Ay)": st.column_config.NumberColumn("Getiri (3 Ay)", format="%.2f%%"),
+            "Getiri (6 Ay)": st.column_config.NumberColumn("Getiri (6 Ay)", format="%.2f%%"),
+        },
+    )
+
+    # Grafik: gruplu çubuk grafik ile 3/6 aylık getirileri yan yana göster
+    grafik_df = karsilastirma_df.dropna(subset=["Getiri (3 Ay)", "Getiri (6 Ay)"], how="all").melt(
+        id_vars="Varlık", value_vars=["Getiri (3 Ay)", "Getiri (6 Ay)"],
+        var_name="Vade", value_name="Getiri (%)"
+    )
+    if not grafik_df.empty:
+        fig = px.bar(
+            grafik_df, x="Varlık", y="Getiri (%)", color="Vade", barmode="group",
+            title="Varlık Sınıfları USD Bazlı Getiri Karşılaştırması",
+        )
+        fig.update_layout(legend_title_text="", xaxis_title="", height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with st.expander("⚠️ Bu karşılaştırmayı okurken dikkat edilmesi gerekenler"):
+        st.markdown("""
+- **Risk profilleri farklı:** Hisse senetleri (BIST, ABD) günlük büyük dalgalanabilir;
+  TL mevduatı ve altın görece daha az volatildir ama garantili değildir.
+- **TL Mevduatı yaklaşık bir hesaplamadır:** Basit faiz mantığıyla (bileşik değil)
+  hesaplanmıştır, gerçek mevduat ürünü koşulları (stopaj, vade, banka) farklılık gösterebilir.
+- **USD/TRY satırı bir "varlık" değil, referans noktasıdır:** Sadece dolar cinsinden
+  nakit tutmanın TL'ye kıyasla getirisini gösterir, karşılaştırma için taban çizgisi sayılabilir.
+- **Geçmiş getiri gelecek performansın garantisi değildir.** Bu tablo bir karar destek
+  aracıdır, yatırım tavsiyesi değildir.
+        """)
+
+    st.divider()
+    st.subheader("Diğer Varlıklar — Detaylı Tablo")
     st.dataframe(
         varlik_sonuclari,
         use_container_width=True,
@@ -445,7 +558,10 @@ with sekme2:
 
     st.caption(
         "Not: USD/TRY satırı, TL'nin dolar karşısındaki değer kaybını/kazancını gösterir. "
-        "TL bazlı yatırımların USD getirisini yorumlarken bu satırı referans al."
+        "TL bazlı yatırımların USD getirisini yorumlarken bu satırı referans al. "
+        "'ABD 10 Yıllık Tahvil Faizi' satırı ise tahvilin **toplam getirisi değil**, "
+        "faiz (yield) seviyesindeki %değişimi gösterir — bu yüzden yukarıdaki ana "
+        "karşılaştırma tablosuna dahil edilmemiştir."
     )
 
 # ============================================================

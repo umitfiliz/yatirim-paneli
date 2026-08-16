@@ -78,7 +78,18 @@ def usd_try_kuru_getir() -> float | None:
         return None
 
 
-def hisse_listesi_analiz_et(hisse_sozlugu: dict, vade_gunleri: dict) -> pd.DataFrame:
+def ortalama_getiri(sonuc_df: pd.DataFrame, kolon: str) -> float | None:
+    """
+    Bir sonuç tablosundaki (örn. hisse_listesi_analiz_et çıktısı) belirtilen
+    getiri sütununun ortalamasını hesaplar. Sütun yoksa veya tüm değerler
+    eksikse None döner.
+    """
+    if kolon not in sonuc_df.columns:
+        return None
+    degerler = sonuc_df[kolon].dropna()
+    if degerler.empty:
+        return None
+    return round(float(degerler.mean()), 2)
     """
     Bir hisse sözlüğü ({ticker: isim}) alır, her hisse için 3 ve 6 aylık
     getirileri hesaplayıp tek bir tablo (DataFrame) olarak döner.
