@@ -33,7 +33,22 @@ from data_utils import (
 )
 from macro_utils import tum_politika_faizlerini_getir, tcmb_tufe_yillik_getir
 from country_utils import ortalama_fk_getir, dxy_getir, abd_tahvil_getir, tr_reel_faiz_hesapla
-from regime_utils import rejim_ozeti_olustur, tr_baglam_olustur, us_baglam_olustur
+from regime_utils import (
+    rejim_ozeti_olustur,
+    tr_baglam_olustur,
+    us_baglam_olustur,
+    altin_baglam_olustur,
+    mevduat_baglam_olustur,
+    usdtry_baglam_olustur,
+    momentum_skoru_hesapla,
+    gorunum_olustur,
+)
+from kurumsal_gorunum import (
+    KURUMSAL_GORUNUMLER,
+    MEVCUT_SEVIYE_REFERANS,
+    GUVEN_AGIRLIGI_ACIKLAMA,
+    DERLEME_TARIHI as KURUMSAL_DERLEME_TARIHI,
+)
 
 st.set_page_config(
     page_title="Yatırım Karar Destek Paneli",
@@ -88,6 +103,11 @@ with st.sidebar:
         fed_yon_esik = st.slider("Fed faiz yönü eşiği (puan)", 0.05, 1.0, DEFAULT_ESIKLER["fed_yon_esik"], 0.05, key="esik_fed_yon")
         tahvil_esik = st.slider("ABD 10Y tahvil %değişim eşiği", 1.0, 10.0, DEFAULT_ESIKLER["tahvil_esik"], 0.5, key="esik_tahvil")
 
+    with st.expander("3-6 Aylık Görünüm (Momentum)"):
+        momentum_esik = st.slider(
+            "Momentum %değişim eşiği (son 3 ay)", 0.5, 10.0, DEFAULT_ESIKLER["momentum_esik"], 0.5, key="esik_momentum"
+        )
+
     if st.button("↺ Varsayılanlara Sıfırla"):
         for k in list(DEFAULT_ESIKLER.keys()):
             st.session_state.pop(f"esik_{k}", None)
@@ -106,6 +126,7 @@ with st.sidebar:
         "dxy_esik": dxy_esik,
         "tahvil_esik": tahvil_esik,
         "fed_yon_esik": fed_yon_esik,
+        "momentum_esik": momentum_esik,
     }
 
 sekme1, sekme2, sekme3 = st.tabs([
@@ -481,12 +502,46 @@ with sekme2:
     usdtry_referans_3ay = usdtry_3ay_degisim
     usdtry_referans_6ay = usdtry_6ay_degisim
 
+    # ============================================================
+    # 3-6 AYLIK GÖRÜNÜM: Momentum + Katman 1 bağlamını birleştiren
+    # şeffaf, kural tabanlı yönelim etiketi (İSTATİSTİKSEL TAHMİN DEĞİLDİR)
+    # ============================================================
+    dxy_etiket_ref = tr_baglam["dxy"]["etiket"] if tr_baglam else "Bilinmiyor"
+    risk_etiket_ref = rejim["risk_istahi"]["etiket"] if rejim else "Bilinmiyor"
+    carry_etiket_ref = rejim["carry_cazibesi"]["etiket"] if rejim else None
+    sermaye_etiket_ref = rejim["sermaye_akisi"]["etiket"] if rejim else "Bilinmiyor"
+
+    altin_baglam = altin_baglam_olustur(risk_etiket_ref, dxy_etiket_ref)
+    mevduat_baglam = mevduat_baglam_olustur(carry_etiket_ref)
+    usdtry_baglam = usdtry_baglam_olustur(sermaye_etiket_ref)
+
+    gorunum_bist, _ = gorunum_olustur(
+        momentum_skoru_hesapla(bist_3ay, esikler["momentum_esik"]),
+        tr_baglam.get("ortalama_skor") if tr_baglam else None,
+    )
+    gorunum_abd, _ = gorunum_olustur(
+        momentum_skoru_hesapla(abd_3ay, esikler["momentum_esik"]),
+        us_baglam.get("ortalama_skor") if us_baglam else None,
+    )
+    gorunum_altin, _ = gorunum_olustur(
+        momentum_skoru_hesapla(altin_3ay, esikler["momentum_esik"]),
+        altin_baglam.get("ortalama_skor"),
+    )
+    gorunum_mevduat, _ = gorunum_olustur(
+        momentum_skoru_hesapla(tl_mevduat_3ay_usd, esikler["momentum_esik"]),
+        mevduat_baglam.get("ortalama_skor"),
+    )
+    gorunum_usdtry, _ = gorunum_olustur(
+        momentum_skoru_hesapla(usdtry_referans_3ay, esikler["momentum_esik"]),
+        usdtry_baglam.get("ortalama_skor"),
+    )
+
     karsilastirma_df = pd.DataFrame([
-        {"Varlık": "BIST Hisseleri (Ort.)", "Getiri (3 Ay)": bist_3ay, "Getiri (6 Ay)": bist_6ay},
-        {"Varlık": "ABD Hisseleri (Ort.)", "Getiri (3 Ay)": abd_3ay, "Getiri (6 Ay)": abd_6ay},
-        {"Varlık": "Altın", "Getiri (3 Ay)": altin_3ay, "Getiri (6 Ay)": altin_6ay},
-        {"Varlık": "TL Mevduatı (yaklaşık)", "Getiri (3 Ay)": tl_mevduat_3ay_usd, "Getiri (6 Ay)": tl_mevduat_6ay_usd},
-        {"Varlık": "USD/TRY (referans)", "Getiri (3 Ay)": usdtry_referans_3ay, "Getiri (6 Ay)": usdtry_referans_6ay},
+        {"Varlık": "BIST Hisseleri (Ort.)", "Getiri (3 Ay)": bist_3ay, "Getiri (6 Ay)": bist_6ay, "Görünüm (3-6 Ay)": gorunum_bist},
+        {"Varlık": "ABD Hisseleri (Ort.)", "Getiri (3 Ay)": abd_3ay, "Getiri (6 Ay)": abd_6ay, "Görünüm (3-6 Ay)": gorunum_abd},
+        {"Varlık": "Altın", "Getiri (3 Ay)": altin_3ay, "Getiri (6 Ay)": altin_6ay, "Görünüm (3-6 Ay)": gorunum_altin},
+        {"Varlık": "TL Mevduatı (yaklaşık)", "Getiri (3 Ay)": tl_mevduat_3ay_usd, "Getiri (6 Ay)": tl_mevduat_6ay_usd, "Görünüm (3-6 Ay)": gorunum_mevduat},
+        {"Varlık": "USD/TRY (referans)", "Getiri (3 Ay)": usdtry_referans_3ay, "Getiri (6 Ay)": usdtry_referans_6ay, "Görünüm (3-6 Ay)": gorunum_usdtry},
     ])
 
     # Sıralama: 3 aylık getiriye göre büyükten küçüğe
@@ -508,8 +563,12 @@ with sekme2:
         use_container_width=True,
         hide_index=True,
         column_config={
-            "Getiri (3 Ay)": st.column_config.NumberColumn("Getiri (3 Ay)", format="%.2f%%"),
-            "Getiri (6 Ay)": st.column_config.NumberColumn("Getiri (6 Ay)", format="%.2f%%"),
+            "Getiri (3 Ay)": st.column_config.NumberColumn("Getiri (3 Ay)", help="Geçmiş 3 aylık gerçekleşen getiri.", format="%.2f%%"),
+            "Getiri (6 Ay)": st.column_config.NumberColumn("Getiri (6 Ay)", help="Geçmiş 6 aylık gerçekleşen getiri.", format="%.2f%%"),
+            "Görünüm (3-6 Ay)": st.column_config.TextColumn(
+                "Görünüm (3-6 Ay)",
+                help="Momentum + Katman 1 bağlamına dayanan kural tabanlı yönelim etiketi. SAYISAL BİR TAHMİN DEĞİLDİR.",
+            ),
         },
     )
 
@@ -526,7 +585,31 @@ with sekme2:
         fig.update_layout(legend_title_text="", xaxis_title="", height=400)
         st.plotly_chart(fig, use_container_width=True)
 
-    with st.expander("⚠️ Bu karşılaştırmayı okurken dikkat edilmesi gerekenler"):
+    with st.expander("🔮 'Görünüm (3-6 Ay)' Nasıl Hesaplanıyor? — LÜTFEN OKU"):
+        st.markdown(f"""
+**Bu bir istatistiksel tahmin, fiyat hedefi veya öngörü DEĞİLDİR.** Hiçbir model
+gelecekteki piyasa getirisini güvenilir şekilde tahmin edemez. "Görünüm" etiketi,
+sadece iki basit bileşenin ortalamasından türetilen şeffaf bir **sezgisel senaryo
+göstergesidir**:
+
+1. **Momentum** — son 3 aylık gerçekleşen getirinin yönü (mevcut ayardaki eşik:
+   ±%{esikler['momentum_esik']:.1f}). Bu, "trend devam eder mi" varsayımına dayanır —
+   ki bu varsayımın kendisi de tartışmalıdır ve her zaman doğru çıkmaz.
+2. **Katman 1 Bağlamı** — o varlık için ilgili rejim/değerleme/carry skorunun ortalaması
+   (örn. BIST için "BIST Bağlamı" skoru, Altın için risk iştahı+DXY'nin ters skoru).
+
+İkisinin ortalaması aynı 5 kademeli skalaya dönüştürülür: Yukarı Yönlü Eğilim →
+Hafif Yukarı Eğilim → Yatay/Nötr → Hafif Aşağı Eğilim → Aşağı Yönlü Eğilim.
+
+**Neden sayısal bir yüzde tahmini vermiyoruz?** Çünkü elimizdeki basit kural tabanlı
+sistemin gerçek öngörü gücü istatistiksel olarak test edilmemiştir (backtest
+yapılmamıştır). Sayısal bir rakam vermek, olduğundan çok daha fazla kesinlik
+izlenimi yaratır. Etiket biçimindeki bu gösterim, bunun bir yönelim fikri olduğunu,
+kesin bir sonuç olmadığını hatırlatmak için bilinçli bir tercihtir.
+
+**Bu bir yatırım tavsiyesi değildir.** Kendi araştırmanı ve risk toleransını
+dikkate alarak karar vermelisin.
+        """)
         st.markdown("""
 - **Risk profilleri farklı:** Hisse senetleri (BIST, ABD) günlük büyük dalgalanabilir;
   TL mevduatı ve altın görece daha az volatildir ama garantili değildir.
@@ -536,6 +619,66 @@ with sekme2:
   nakit tutmanın TL'ye kıyasla getirisini gösterir, karşılaştırma için taban çizgisi sayılabilir.
 - **Geçmiş getiri gelecek performansın garantisi değildir.** Bu tablo bir karar destek
   aracıdır, yatırım tavsiyesi değildir.
+        """)
+
+    # ============================================================
+    # KURUMSAL GÖRÜNÜM NOTLARI: Büyük kurumların ücretsiz yayınlanan
+    # araştırma raporlarından derlenen hedefler (MANUEL GÜNCELLENİR)
+    # ============================================================
+    st.divider()
+    st.subheader("📚 Kurumsal Görünüm Notları")
+    st.caption(
+        f"Büyük yatırım bankaları ve aracı kurumların ücretsiz yayınlanan araştırma "
+        f"raporlarından derlenmiştir · **Derleme tarihi: {KURUMSAL_DERLEME_TARIHI}**. "
+        "⚠️ Bu bölüm otomatik güncellenmez — deploy edilmiş uygulamanın canlı web "
+        "erişimi yoktur. Güncel tutmak için Claude'a 'kurumsal görünüm verilerini "
+        "güncelle' demen yeterli."
+    )
+
+    for varlik_adi, girdiler in KURUMSAL_GORUNUMLER.items():
+        with st.expander(f"🏦 {varlik_adi} — {len(girdiler)} kurum takip ediliyor"):
+            referans = MEVCUT_SEVIYE_REFERANS.get(varlik_adi, {})
+            if referans:
+                st.caption(
+                    f"Referans seviye: {referans['deger']:,} {referans['birim']} "
+                    f"({referans['tarih']}) — güncel canlı fiyat için Katman 1/3'e bak."
+                )
+
+            kurum_df = pd.DataFrame(girdiler)[["kurum", "tarih", "hedef", "gorus"]]
+            kurum_df.columns = ["Kurum", "Rapor Tarihi", "Hedef", "Görüş"]
+            st.dataframe(kurum_df, use_container_width=True, hide_index=True)
+
+            # Basit konsensüs: bullish/nötr/bearish sayımı
+            bullish = sum(1 for g in girdiler if "Bullish" in g["gorus"])
+            bearish = sum(1 for g in girdiler if "Bearish" in g["gorus"])
+            notr = len(girdiler) - bullish - bearish
+            st.markdown(
+                f"**Konsensüs yönü:** {bullish} Bullish · {notr} Nötr · {bearish} Bearish "
+                f"({len(girdiler)} kurum arasında)"
+            )
+
+            # Kaynak linkleri
+            st.markdown("**Kaynaklar:** " + " · ".join(
+                f"[{g['kurum']}]({g['kaynak']})" for g in girdiler
+            ))
+
+    st.caption(GUVEN_AGIRLIGI_ACIKLAMA)
+
+    with st.expander("⚠️ Kurumsal görünüm verilerini okurken dikkat edilmesi gerekenler"):
+        st.markdown("""
+- **Bu veriler kurumların KENDİ tahminleridir, gerçekleşmiş sonuç değildir.**
+  Hedef fiyatlar sıkça revize edilir ve genellikle isabet oranı düşüktür — büyük
+  bankaların bile geçmiş yıllardaki hedefleri gerçekleşenden belirgin şekilde
+  sapmıştır.
+- **Vade uyumsuzluğu:** Çoğu kurumsal hedef "yıl sonu" veya "12 aylık" ufka göre
+  verilir, bizim Katman 2'deki 3-6 aylık ufkumuzla birebir örtüşmeyebilir —
+  yön fikri olarak değerlendir, kesin zaman çizelgesi olarak değil.
+- **Yayılım (dispersion) yüksekse dikkatli ol:** Örneğin altın için kurumlar
+  arasında $4,800 ile $6,300 arasında geniş bir hedef aralığı var — bu, kurumların
+  kendi aralarında da belirsizlik/anlaşmazlık içinde olduğunu gösterir.
+- **Bu, kendi hesapladığımız 'Görünüm (3-6 Ay)' etiketinden ayrı bir kaynaktır**
+  — matematiksel olarak birleştirilmemiştir, bilinçli olarak ayrı ayrı gösterilir
+  ki hangi bilginin nereden geldiği net kalsın.
         """)
 
     st.divider()

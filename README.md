@@ -36,11 +36,11 @@ BIST ve ABD hisseleri için 3 katmanlı karar destek sistemi.
 6. Deploy et. Birkaç dakika içinde uygulaman `https://[senin-secimin].streamlit.app` adresinde
    yayında olacak — telefon, tablet, bilgisayar fark etmeksizin bu linkten erişebilirsin.
 
-## Şu Anki Durum (v6)
+## Şu Anki Durum (v7)
 
 - ✅ Katman 1: Piyasa göstergeleri, politika faizleri, Rejim Özeti, Ülkeye Özgü Faktörler, ayarlanabilir eşikler
-- ✅ Katman 2: **Varlık Sınıfı Karşılaştırması** — BIST hisseleri (ort.), ABD hisseleri (ort.), Altın, TL Mevduatı (yaklaşık), USD/TRY referansı tek tabloda ve gruplu çubuk grafikte karşılaştırılıyor; en yüksek/en düşük getiri otomatik vurgulanıyor
-- ✅ Katman 2: TL Mevduatı, TCMB politika faizinden basit faiz yaklaşımıyla türetilip USD/TRY değişimiyle USD bazına çevriliyor (bileşik faiz değil, yaklaşık bir hesaplama — açıkça belirtiliyor)
+- ✅ Katman 2: Varlık Sınıfı Karşılaştırması (BIST, ABD, Altın, TL Mevduatı, USD/TRY) + 3-6 aylık kural tabanlı "Görünüm" etiketi
+- ✅ Katman 2: **📚 Kurumsal Görünüm Notları** — büyük yatırım bankalarının (Goldman Sachs, JPMorgan, UBS, Morgan Stanley, Wells Fargo, Bank of America, Citigroup, Yardeni) ve yerel aracı kurumların (Gedik, Tacirler) ücretsiz yayınlanan hedef fiyat/görüşleri, kaynak linkleriyle birlikte. **Bu veri seti manuel güncellenir** (deploy edilmiş uygulamanın canlı web erişimi yok) — güncellemek için Claude'a "kurumsal görünüm verilerini güncelle" de
 - ✅ Katman 3: BIST/ABD hisse bazlı getiriler (USD/TL)
 - ✅ GitHub + Streamlit Cloud üzerinden yayında, çok cihazdan erişilebilir
 
@@ -50,3 +50,4 @@ BIST ve ABD hisseleri için 3 katmanlı karar destek sistemi.
 - EMBI spread gibi ek bir EM risk göstergesi
 - Katman 3'te F/K, PD/DD gibi metrikleri tek tek hisse bazında gösterme
 - Kenar çubuğundaki eşik ayarlarını bir profil olarak kaydedip yeniden yükleyebilme
+- Kurumsal görünüm veri setini düzenli aralıklarla (örn. ayda bir) tazeleme rutini

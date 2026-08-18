@@ -207,10 +207,11 @@ def tr_baglam_olustur(
         {"bilesen": "TL Carry Cazibesi", "etiket": carry_etiket or "Bilinmiyor", "skor": haritalar["carry"].get(carry_etiket)},
     ]
 
-    genel_baglam, _ = _ortalama_skor_ve_etiket(dokum)
+    genel_baglam, ortalama_skor = _ortalama_skor_ve_etiket(dokum)
 
     return {
         "genel_baglam": genel_baglam,
+        "ortalama_skor": ortalama_skor,
         "dokum": dokum,
         "reel_faiz": {"etiket": reel_faiz_etiket, "aciklama": reel_faiz_aciklama},
         "degerleme": {"etiket": bist_deger_etiket, "aciklama": bist_deger_aciklama},
@@ -246,14 +247,105 @@ def us_baglam_olustur(
         {"bilesen": "10 Yıllık Tahvil Faizi Trendi", "etiket": tahvil_etiket, "skor": haritalar["tahvil"].get(tahvil_etiket)},
     ]
 
-    genel_baglam, _ = _ortalama_skor_ve_etiket(dokum)
+    genel_baglam, ortalama_skor = _ortalama_skor_ve_etiket(dokum)
 
     return {
         "genel_baglam": genel_baglam,
+        "ortalama_skor": ortalama_skor,
         "dokum": dokum,
         "degerleme": {"etiket": abd_deger_etiket, "aciklama": abd_deger_aciklama},
         "tahvil": {"etiket": tahvil_etiket, "aciklama": tahvil_aciklama},
     }
+
+
+def altin_baglam_olustur(risk_istahi_etiket: str, dxy_etiket: str) -> dict:
+    """
+    Altın için basit bir bağlam üretir. Altın tipik olarak risk-off dönemlerde
+    ve dolar zayıfken (DXY düşerken) daha cazip hale gelir — bu yüzden risk
+    iştahı ve DXY etkisinin işareti burada TERSİNE çevrilerek kullanılır.
+    """
+    haritalar = {
+        "risk_ters": {"Risk-Off (Kaçış)": 1, "Nötr": 0, "Risk-On (İştahlı)": -1},
+        "dxy_ters": {"TL/EM İçin Destek": 1, "Nötr": 0, "TL/EM İçin Baskı": -1},
+    }
+    risk_skor = None
+    for anahtar, skor in haritalar["risk_ters"].items():
+        if risk_istahi_etiket.startswith(anahtar.split(" (")[0]):
+            risk_skor = skor
+            break
+
+    dokum = [
+        {"bilesen": "Risk İştahının Altına Etkisi", "etiket": risk_istahi_etiket, "skor": risk_skor},
+        {"bilesen": "Dolar Endeksinin (DXY) Altına Etkisi", "etiket": dxy_etiket, "skor": haritalar["dxy_ters"].get(dxy_etiket)},
+    ]
+    genel_baglam, ortalama_skor = _ortalama_skor_ve_etiket(dokum)
+    return {"genel_baglam": genel_baglam, "ortalama_skor": ortalama_skor, "dokum": dokum}
+
+
+def mevduat_baglam_olustur(carry_etiket: str | None) -> dict:
+    """TL mevduatı için bağlam — esas olarak carry cazibesine dayanır."""
+    haritalar = {"Çok Yüksek": 1, "Yüksek": 1, "Orta/Düşük": 0}
+    dokum = [
+        {"bilesen": "TL Carry Cazibesi", "etiket": carry_etiket or "Bilinmiyor", "skor": haritalar.get(carry_etiket)},
+    ]
+    genel_baglam, ortalama_skor = _ortalama_skor_ve_etiket(dokum)
+    return {"genel_baglam": genel_baglam, "ortalama_skor": ortalama_skor, "dokum": dokum}
+
+
+def usdtry_baglam_olustur(sermaye_etiket: str) -> dict:
+    """
+    USD/TRY referans satırı için bağlam. Sermaye çıkışı sinyali USD/TRY'nin
+    yükselmesini (dolar güçlenmesini) destekler, bu yüzden işaret buna göredir
+    (sermaye çıkışı = bu satırın 'getirisi' için pozitif).
+    """
+    haritalar = {"Sermaye Çıkışı Sinyali": 1, "Nötr": 0, "Sermaye Girişi Sinyali": -1}
+    dokum = [
+        {"bilesen": "TL/EM Sermaye Akışı Yönü", "etiket": sermaye_etiket, "skor": haritalar.get(sermaye_etiket)},
+    ]
+    genel_baglam, ortalama_skor = _ortalama_skor_ve_etiket(dokum)
+    return {"genel_baglam": genel_baglam, "ortalama_skor": ortalama_skor, "dokum": dokum}
+
+
+def momentum_skoru_hesapla(getiri_3ay: float | None, esik: float = 2.0) -> int | None:
+    """Son 3 aylık getirinin yönüne göre basit bir momentum skoru (-1/0/+1) üretir."""
+    if getiri_3ay is None:
+        return None
+    if getiri_3ay > esik:
+        return 1
+    elif getiri_3ay < -esik:
+        return -1
+    return 0
+
+
+def gorunum_etiketle(skor: float | None) -> str:
+    """Bir bileşik skoru (momentum + bağlam ortalaması) 3-6 aylık yönelim etiketine çevirir."""
+    if skor is None:
+        return "Bilinmiyor (yeterli veri yok)"
+    if skor >= 0.6:
+        return "Yukarı Yönlü Eğilim"
+    elif skor >= 0.2:
+        return "Hafif Yukarı Eğilim"
+    elif skor > -0.2:
+        return "Yatay / Nötr"
+    elif skor > -0.6:
+        return "Hafif Aşağı Eğilim"
+    else:
+        return "Aşağı Yönlü Eğilim"
+
+
+def gorunum_olustur(momentum_skor: int | None, baglam_skor: float | None) -> tuple[str, float | None]:
+    """
+    Momentum (son 3 ay yönü) ve ilgili bağlam skorunu (rejim/değerleme/carry vb.)
+    birleştirip 3-6 aylık bir yönelim etiketi üretir. Bu KESİN BİR TAHMİN DEĞİLDİR —
+    basit, şeffaf bir sezgisel senaryodur.
+    """
+    degerler = [d for d in [momentum_skor, baglam_skor] if d is not None]
+    if not degerler:
+        return "Bilinmiyor (yeterli veri yok)", None
+    ortalama = sum(degerler) / len(degerler)
+    return gorunum_etiketle(ortalama), ortalama
+
+
 def genel_rejim_belirle(risk_etiket: str, sermaye_etiket: str, fed_yon_etiket: str) -> tuple[str, list[dict]]:
     """
     Risk iştahı, sermaye akışı ve Fed faiz yönü etiketlerini bir puanlama

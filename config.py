@@ -189,4 +189,5 @@ DEFAULT_ESIKLER = {
     "dxy_esik": 2.0,           # DXY %değişim eşiği (TL/EM baskı/destek sinyali)
     "tahvil_esik": 3.0,        # ABD 10Y tahvil %değişim eşiği (değerleme baskısı sinyali)
     "fed_yon_esik": 0.1,       # Fed faizi bu puandan fazla değiştiyse yön sinyali verilir
+    "momentum_esik": 2.0,      # Son 3 aylık getiri bu %'nin üstü/altındaysa momentum yönü sinyali verilir
 }
